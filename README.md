@@ -1,65 +1,123 @@
+<div align="center">
+
+![Banner](https://r2.fivemanage.com/b8BG4vav9CjKMUdz6iKnY/mythic_banner_old.png)
+
 # ox_inventory
 
-A complete inventory system for FiveM, implementing items, weapons, shops, and more without any strict framework dependency.
+### *Slot-based inventory system with full Mythic Framework compatibility*
 
-![](https://img.shields.io/github/downloads/communityox/ox_inventory/total?logo=github)
-![](https://img.shields.io/github/downloads/communityox/ox_inventory/latest/total?logo=github)
-![](https://img.shields.io/github/contributors/communityox/ox_inventory?logo=github)
-![](https://img.shields.io/github/v/release/communityox/ox_inventory?logo=github)
+**Items • Weapons • Shops • Stashes**
 
-## 📚 Documentation
+![Lua](https://img.shields.io/badge/-Lua_5.4-2C2D72?style=for-the-badge&logo=lua&logoColor=white)
+![FiveM](https://img.shields.io/badge/-FiveM-F40552?style=for-the-badge)
+![React](https://img.shields.io/badge/-React-61DAFB?style=for-the-badge&logo=react&logoColor=black)
+![Redux](https://img.shields.io/badge/-Redux-764ABC?style=for-the-badge&logo=redux&logoColor=white)
+![TypeScript](https://img.shields.io/badge/-TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
+![Vite](https://img.shields.io/badge/-Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white)
 
-https://coxdocs.dev/ox_inventory
+[Features](#-features) • [Bridge](#-mythic-bridge) • [Development](#-development) • [Dependencies](#-dependencies)
 
-## 💾 Download
+</div>
 
-https://github.com/communityox/ox_inventory/releases/latest/download/ox_inventory.zip
+---
 
-## Supported frameworks
+## 📖 Overview
 
-We do not guarantee compatibility or support for third-party resources.
+A fork of [ox_inventory](https://github.com/communityox/ox_inventory) with a full Mythic Framework compatibility bridge. Other mythic resources — drugs, police, robbery, targeting, finance, admin — require zero code changes. Item definitions, shops, stashes, trunks, gloveboxes, and drops are all handled transparently through the bridge.
 
-- [ox_core](https://github.com/communityox/ox_core)
-- [esx](https://github.com/esx-framework/esx_core)
-- [qbox](https://github.com/Qbox-project/qbx_core)
-- [nd_core](https://github.com/ND-Framework/ND_Core)
+---
+
+> **TODO:** Item add/remove notifications currently use ox's built-in notify system. These should be wired through `mythic-notify` so they match the server's notification style. See `modules/bridge/mythic/client.lua` → `Inventory:Client:Changed` handler.
+
+---
+
+> **TODO:** Item use progress bars are not yet bridged. Mythic sends `Inventory:ItemUse` to the client with animation config before firing the use callback — ox skips this round-trip so items fire instantly with no animation. Needs a bridge that reads the item's `pbConfig` and triggers `lib.progressBar`.
+
+---
 
 ## ✨ Features
 
-- Server-side security ensures interactions with items, shops, and stashes are all validated.
-- Logging for important events, such as purchases, item movement, and item creation or removal.
-- Supports player-owned vehicles, licenses, and group systems implemented by frameworks.
-- Fully synchronised, allowing multiple players to [access the same inventory](https://user-images.githubusercontent.com/65407488/230926091-c0033732-d293-48c9-9d62-6f6ae0a8a488.mp4).
+<div align="center">
+<table>
+<tr>
+<td width="50%">
 
-### Items
+### Inventory
+- **Slot-based** — items stored per-slot with customisable metadata
+- **Item uniqueness** — metadata supports serial numbers, quality, custom data
+- **Durability** — items degrade and can be destroyed over time
+- **Containers** — bag/backpack items open their own stash on use
+- **Fully synchronised** — multiple players can share the same inventory
 
-- Inventory items are stored per-slot, with customisable metadata to support item uniqueness.
-- Overrides default weapon-system with weapons as items.
-- Weapon attachments and ammo system, including special ammo types.
-- Durability, allowing items to be depleted or removed overtime.
-- Internal item system provides secure and easy handling for item use effects.
-- Compatibility with 3rd party framework item registration.
+</td>
+<td width="50%">
 
-### Shops
+### Weapons & Shops
+- **Weapons as items** — overrides the default GTA weapon system
+- **Attachments & ammo** — full attachment and special ammo support
+- **Shops** — group and license restricted, multiple currency types
+- **Stashes** — personal, shared, property, evidence, and pd lockers
+- **Vehicles** — trunk and glovebox access for any vehicle
 
-- Restricted access based on groups and licenses.
-- Support different currency for items (black money, poker chips, etc).
+</td>
+</tr>
+</table>
+</div>
 
-### Stashes
+---
 
-- Personal stashes, linking a stash with a specific identifier or creating per-player instances.
-- Restricted access based on groups.
-- Registration of new stashes from any resource.
-- Containers allow access to stashes when using an item, like a paperbag or backpack.
-- Access gloveboxes and trunks for any vehicle.
-- Random item generation inside dumpsters and unowned vehicles.
+## 🔗 Mythic Bridge
 
-## Copyright
+The bridge lives in `modules/bridge/mythic/` and is loaded automatically when `inventory:framework` is set to `mythic`.
 
-Copyright © 2024 Overextended <https://github.com/overextended>
+**What's bridged:**
 
-This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+| Component | Status |
+|-----------|--------|
+| `FetchComponent('Inventory')` — all shims | ✅ |
+| `Inventory.Items` — RegisterUse, Remove\*, Has, HasAnyItems | ✅ |
+| Item database — all mythic item files converted at startup | ✅ |
+| Shops — loaded from mythic-inventory config at startup | ✅ |
+| Stashes, trunks, gloveboxes, drops | ✅ |
+| Character spawn / logout / job update | ✅ |
+| Finance sync (cash item ↔ mythic-finance) | ✅ |
+| State bag sync (ItemStates, isCuffed, isDead) | ✅ |
+| `FetchComponent('Crafting')` — stub, prevents crash | ⚠️ |
+| Crafting bench registration | ❌ |
+| Client item use progress bar | ❌ |
 
-This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+**Required in `server.cfg`:**
+```
+set inventory:framework "mythic"
+```
 
-You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
+---
+
+## 👨‍💻 Development
+
+```bash
+cd web
+bun install
+bun run dev      # dev server with hot reload
+bun run build    # production build
+```
+
+---
+
+## 📦 Dependencies
+
+| Resource | Why |
+|----------|-----|
+| `mythic-base` | Core framework (components, middleware, fetch) |
+| `mythic-inventory` | Item definitions and shop config |
+| `ox_lib` | Utility library (required by ox_inventory) |
+| `oxmysql` | Database layer |
+
+---
+
+<div align="center">
+
+[![Made for FiveM](https://img.shields.io/badge/Made_for-FiveM-F40552?style=for-the-badge)](https://fivem.net)
+[![Mythic Framework](https://img.shields.io/badge/Mythic-Framework-208692?style=for-the-badge)](https://github.com/mythic-framework)
+
+</div>

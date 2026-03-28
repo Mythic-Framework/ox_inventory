@@ -25,10 +25,16 @@ ox_libs {
 
 server_scripts {
     '@oxmysql/lib/MySQL.lua',
-    'init.lua'
+    'init.lua',
+    'modules/bridge/mythic/items.lua',
+    'modules/bridge/mythic/shops.lua',
+    'modules/bridge/mythic/migration.lua',
 }
 
-client_script 'init.lua'
+client_scripts {
+    'init.lua',
+    'modules/bridge/mythic/client.lua',
+}
 
 ui_page 'web/build/index.html'
 
@@ -40,8 +46,12 @@ files {
     'web/build/assets/*.js',
     'web/build/assets/*.css',
     'web/images/*.png',
+    'web/images/*.webp',
     'modules/**/shared.lua',
     'modules/**/client.lua',
     'modules/bridge/**/client.lua',
     'data/*.lua',
+    'data/mythic-items/index.lua',
+    'data/mythic-items/*.lua',
+    'data/mythic-items/**/*.lua',
 }

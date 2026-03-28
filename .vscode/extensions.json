@@ -1,3 +1,7 @@
 {
-  "recommendations": ["communityox.cfxlua-vscode-cox", "sumneko.lua"]
+  "recommendations": [
+    "communityox.cfxlua-vscode-cox",
+    "sumneko.lua",
+    "ricardo-emerson.base-development-extensions-pack"
+  ]
 }
