@@ -518,14 +518,21 @@ Inventory.OpenSecondary = function(self, source, invType, owner, vehClass, vehMo
         -- TODO: shops need ox-format definitions before this actually works
         TriggerClientEvent('Inventory:Client:Load', source, { invType = 11, owner = owner })
     elseif invType == 4 or invType == 5 then
-        -- client needs to find the vehicle entity by VIN to get the netid
-        -- passed as vinOwner so client knows to do the entity lookup
-        TriggerClientEvent('Inventory:Client:Load', source, {
-            invType  = invType,
-            owner    = owner,
-            vehClass = vehClass or false,
-            vehModel = vehModel or false,
-        })
+        -- resolve vehicle server side by vin - dont trust client loop
+        local oxInvType = invType == 4 and 'trunk' or 'glovebox'
+        local targetEntity
+        for _, entity in ipairs(GetAllVehicles()) do
+            if Entity(entity).state.VIN == owner then
+                targetEntity = entity
+                break
+            end
+        end
+        if targetEntity then
+            local netId = NetworkGetNetworkIdFromEntity(targetEntity)
+            exports['ox_inventory']:forceOpenInventory(source, oxInvType, { netid = netId })
+        else
+            print('^3[mythic-ox-bridge] OpenSecondary: no vehicle found with VIN: ' .. tostring(owner) .. ' for ' .. oxInvType .. '^0')
+        end
     elseif invType == 10 then
         TriggerClientEvent('Inventory:Client:Load', source, { invType = 10, owner = owner })
     end
@@ -711,4 +718,13 @@ end)
 RegisterNetEvent('ox_inventory:bridge:openShop', function(shopId)
     local src = source
     Inventory.OpenSecondary(Inventory.Items, src, 11, ('shop:%s'):format(tostring(shopId)))
+end)
+
+RegisterNetEvent('ox_inventory:bridge:openTrunk', function(netId)
+    local src = source
+    local entity = NetworkGetEntityFromNetworkId(netId)
+    if not entity or entity == 0 then return end
+    local vin = Entity(entity).state.VIN
+    if not vin then return end
+    exports['ox_inventory']:forceOpenInventory(src, 'trunk', {netid = netId})
 end)

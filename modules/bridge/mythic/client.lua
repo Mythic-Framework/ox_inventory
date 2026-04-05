@@ -160,32 +160,9 @@ end)
 
 -- secondary inventory opens, this one was a pain in the ass to figure out
 RegisterNetEvent('Inventory:Client:Load', function(data)
-    if data.invType == 4 or data.invType == 5 then
-        -- trunk or glovebox
-        -- ox needs the vehicle netid for proper slot/weight lookup and security checks
-        -- owner is the VIN from mythic state bag, we find the vehicle entity locally
-        local invType = data.invType == 4 and 'trunk' or 'glovebox'
-        local netId
-
-        local vehicles = GetGamePool('CVehicle')
-        for _, veh in ipairs(vehicles) do
-            if Entity(veh).state.VIN == data.owner then
-                netId = NetworkGetNetworkIdFromEntity(veh)
-                break
-            end
-        end
-
-        if netId then
-            exports['ox_inventory']:openInventory(invType, {
-                netid = netId,
-                model = data.vehModel,
-                class = data.vehClass,
-            })
-        else
-            -- vehicle wasnt found locally, this probably means something went wrong upstream
-            print('^3[mythic-ox-bridge] couldnt find vehicle with VIN ' .. tostring(data.owner) .. ' for trunk open^0')
-        end
-    elseif data.invType == 13 or data.invType == 3 or data.invType == 44 or data.invType == 45 or data.invType >= 1000 then
+    -- trunk/glovebox (invtype 4/5) no longer handled here (no need to)
+    -- server calls forceOpenInventory directly
+    if data.invType == 13 or data.invType == 3 or data.invType == 44 or data.invType == 45 or data.invType >= 1000 then
         -- stash: regular, police rack, evidence lockers, property safes etc
         exports['ox_inventory']:openInventory('stash', {
             id = data.owner,
@@ -370,3 +347,7 @@ ClientInventory.Shop = {
        TriggerServerEvent('ox_inventory:bridge:openShop', shopId) 
     end,
 }
+
+AddEventHandler('Inventory:Client:Trunk', function(entity)
+    TriggerServerEvent('ox_inventory:bridge:openTrunk', NetworkGetNetworkIdFromEntity(entity.entity))    
+end)

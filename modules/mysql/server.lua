@@ -127,18 +127,32 @@ function db.loadStash(owner, name)
 end
 
 function db.saveGlovebox(id, inventory)
-    return MySQL.prepare(Query.UPDATE_GLOVEBOX, { inventory, id })
+    if shared.framework == 'mythic' then
+        return MySQL.prepare(Query.UPSERT_STASH, { inventory, '', id})
+    end
+    return MySQL.prepare(Query.UPDATE_GLOVEBOX, { inventory, id})
 end
 
-function db.loadGlovebox(id)
+function db.loadGlovebox(id, inventory)
+    if shared.framework == 'mythic' then
+        local data = MySQL.prepare.await(Query.SELECT_STASH, { '', id })
+        return data and { glovebox = data }
+    end
     return MySQL.prepare.await(Query.SELECT_GLOVEBOX, { id })
 end
 
 function db.saveTrunk(id, inventory)
+    if shared.framework == 'mythic' then
+        return MySQL.prepare(Query.UPSERT_STASH, { inventory, '', id })
+    end
     return MySQL.prepare(Query.UPDATE_TRUNK, { inventory, id })
 end
 
 function db.loadTrunk(id)
+    if shared.framework == 'mythic' then
+        local data = MySQL.prepare.await(Query.SELECT_STASH, { '', id })
+        return data and { trunk = data }
+    end
     return MySQL.prepare.await(Query.SELECT_TRUNK, { id })
 end
 
@@ -194,7 +208,14 @@ function db.saveInventories(players, trunks, gloveboxes, stashes, total)
         pending += 1
 
         Citizen.CreateThreadNow(function()
-            local resp = safeQuery(MySQL.prepare.await, Query.UPDATE_TRUNK, trunks)
+            local resp
+            if shared.framework == 'mythic' then
+                local remapped = {}
+                for i = 1, total[2] do remapped[i] = { trunks[i][1], '', trunks[i][2] } end
+                resp = safeQuery(MySQL.prepare.await, Query.UPSERT_STASH, remapped)
+            else
+                resp = safeQuery(MySQL.prepare.await, Query.UPDATE_TRUNK, trunks)
+            end
             pending -= 1
 
             if resp then
@@ -207,7 +228,14 @@ function db.saveInventories(players, trunks, gloveboxes, stashes, total)
         pending += 1
 
         Citizen.CreateThreadNow(function()
-            local resp = safeQuery(MySQL.prepare.await, Query.UPDATE_GLOVEBOX, gloveboxes)
+            local resp
+            if shared.framework == 'mythic' then
+                local remapped = {}
+                for i = 1, total[3] do remapped[i] = { gloveboxes[i][1], '', gloveboxes[i][2] } end
+                resp = safeQuery(MySQL.prepare.await, Query.UPSERT_STASH, remapped)
+            else
+                resp = safeQuery(MySQL.prepare.await, Query.UPDATE_GLOVEBOX, gloveboxes)
+            end
             pending -= 1
 
             if resp then
