@@ -62,7 +62,7 @@ RegisterCommand('migrateinventory', function (source)
 
         do
             local items = MySQL.query.await(
-                'SELECT id, item_id, slot, quality, information, creationData, expiryDate FROM inventory WHERE name = ? AND dropped = 0 ORDER BY slot ASC',
+                'SELECT id, item_id, slot, quality, information FROM inventory WHERE name = ? AND dropped = 0 ORDER BY slot ASC',
                 { invName }
             )
 
@@ -88,11 +88,6 @@ RegisterCommand('migrateinventory', function (source)
                 -- carry over quality
                 if row.quality and row.quality > 0 then
                     metadata.quality = row.quality
-                end
-
-                -- carry over expiry
-                if row.expiryDate and row.expiryDate ~= -1 then
-                    metadata.expiryDate = row.expiryDate
                 end
 
                 -- stack items sharing the same slot

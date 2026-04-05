@@ -37,13 +37,23 @@ Citizen.CreateThreadNow(function()
         playerColumn = 'citizenid'
         vehicleTable = 'player_vehicles'
         vehicleColumn = 'id'
+    elseif shared.framework == 'mythic' then
+        -- player inventory stored as stashes in ox inventory using sid name
+        -- no column needed on mythic character tables i think :()
+        playerTable = nil
+        playerColumn = nil
     else
         return
     end
 
     for k, v in pairs(Query) do
-        Query[k] = v:gsub('{user_table}', playerTable):gsub('{user_column}', playerColumn):gsub('{vehicle_table}',
-            vehicleTable):gsub('{vehicle_column}', vehicleColumn)
+        -- Query[k] = v:gsub('{user_table}', playerTable):gsub('{user_column}', playerColumn):gsub('{vehicle_table}',
+        --     vehicleTable):gsub('{vehicle_column}', vehicleColumn)
+        Query[k] = v
+            :gsub('{user_table}', playerTable or '')
+            :gsub('{user_column}', playerColumn or '')
+            :gsub('{vehicle_table}', vehicleTable or '')
+            :gsub('{vehicle_column}', vehicleColumn or '')
     end
 
     Wait(0)
@@ -58,63 +68,33 @@ Citizen.CreateThreadNow(function()
 			`lastupdated` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
 			UNIQUE KEY `owner` (`owner`,`name`)
 		)]])
-    else
-        -- Shouldn't be needed anymore; was used for some data conversion for v2.5.0 (back in March 2022)
-        -- result = MySQL.query.await("SELECT owner, name FROM ox_inventory WHERE NOT owner = ''")
-
-        -- if result and next(result) then
-        -- 	local parameters = {}
-        -- 	local count = 0
-
-        -- 	for i = 1, #result do
-        -- 		local data = result[i]
-        -- 		local snip = data.name:sub(-#data.owner, #data.name)
-
-        -- 		if data.owner == snip then
-        -- 			local name = data.name:sub(0, #data.name - #snip)
-
-        -- 			count += 1
-        -- 			parameters[count] = { query = 'UPDATE ox_inventory SET `name` = ? WHERE `owner` = ? AND `name` = ?', values = { name, data.owner, data.name } }
-        -- 		end
-        -- 	end
-
-        -- 	if #parameters > 0 then
-        -- 		MySQL.transaction(parameters)
-        -- 	end
-        -- end
     end
+    if vehicleTable then
+        result = MySQL.query.await(('SHOW COLUMNS FROM `%s`'):format(vehicleTable))
 
-    result = MySQL.query.await(('SHOW COLUMNS FROM `%s`'):format(vehicleTable))
-
-    if result then
-        local glovebox, trunk
-
-        for i = 1, #result do
-            local column = result[i]
-            if column.Field == 'glovebox' then
-                glovebox = true
-            elseif column.Field == 'trunk' then
-                trunk = true
+        if result then
+            local glovebox, trunk
+            for i = 1,  #result do
+                local column = result[i]
+                if column.Field == 'glovebox' then glovebox = true
+                elseif column.Field == 'trunk' then trunk = true end
+            end
+            if not glovebox then
+                MySQL.query(('ALTER TABLE `%s` ADD COLUMN `glovebox` LONGTEXT NULL'):format(vehicleTable))
+            end
+            if not trunk then
+                MySQL.query(('ALTER TABLE `%s` ADD COLUMN `trunk` LONGTEXT NULL'):format(vehicleTable))
             end
         end
-
-        if not glovebox then
-            MySQL.query(('ALTER TABLE `%s` ADD COLUMN `glovebox` LONGTEXT NULL'):format(vehicleTable))
-        end
-
-        if not trunk then
-            MySQL.query(('ALTER TABLE `%s` ADD COLUMN `trunk` LONGTEXT NULL'):format(vehicleTable))
-        end
     end
-
-    success, result = pcall(MySQL.scalar.await, ('SELECT inventory FROM `%s`'):format(playerTable))
-
-    if not success then
-        MySQL.query(('ALTER TABLE `%s` ADD COLUMN `inventory` LONGTEXT NULL'):format(playerTable))
+    if playerTable then
+        success, result = pcall(MySQL.scalar.await, ('SELECT inventory FROM `%s`'):format(playerTable))
+        if not success then
+            MySQL.query(('ALTER TABLE `%s` ADD COLUMN `inventory` LONGTEXT NULL'):format(playerTable))
+        end
     end
 
     local clearStashes = GetConvar('inventory:clearstashes', '6 MONTH')
-
     if clearStashes ~= '' then
         pcall(MySQL.query.await, ('DELETE FROM ox_inventory WHERE lastupdated < (NOW() - INTERVAL %s)'):format(clearStashes))
     end
@@ -123,11 +103,18 @@ end)
 db = {}
 
 function db.loadPlayer(identifier)
+    if shared.framework == 'mythic' then
+        local result = MySQL.prepare.await(Query.SELECT_STASH, { tostring(identifier), 'inventory' })
+        return result and json.decode(result)
+    end
     local inventory = MySQL.prepare.await(Query.SELECT_PLAYER, { identifier }) --[[@as string?]]
     return inventory and json.decode(inventory)
 end
 
 function db.savePlayer(owner, inventory)
+    if shared.framework == 'mythic' then 
+        return MySQL.prepare(Query.UPSERT_STASH, { inventory, tostring(owner), 'inventory'})
+    end
     return MySQL.prepare(Query.UPDATE_PLAYER, { inventory, owner })
 end
 

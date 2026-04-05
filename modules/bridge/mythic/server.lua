@@ -59,6 +59,71 @@ function server.setPlayerData(player)
     }
 end
 
+-- build a lookup of item states from all items that have a state field 
+-- this should mirror mythic inventories update shit 
+local function buildItemStateMap()
+    local stateMap = {}
+    local allItems = lib.load('data.mythic-items.index')
+    if allItems then
+        for _, item in ipairs(allItems) do
+            if item.name and item.state then
+                stateMap[item.name] = item.state
+            end
+        end
+    end
+    return stateMap
+end
+
+local ItemStateMap = buildItemStateMap()
+
+local function updateCharacterStates(source, inv)
+    local player = exports['mythic-base']:FetchComponent('Fetch'):Source(source)
+    if not player then return end
+    local char = player:GetData('Character')
+    if not char then return end
+    local playerStates = char:GetData('States') or {}
+    local inventoryStates = {}
+
+    -- collect all states
+    for _, slotData in pairs(inv.items or {}) do
+        if slotData and slotData.name then
+            local state = ItemStateMap[slotData.name]
+            if state then
+                inventoryStates[state] = true
+            end
+        end
+    end
+
+    local changed = false
+
+    -- add states from inventory that arent there?????
+    for state in pairs(inventoryStates) do
+        local found = false
+        for _, s in ipairs(playerStates) do
+            if s == state then found = true break end
+        end
+        if not found then
+            table.insert(playerStates, state)
+            changed = true
+        end
+    end
+
+    -- remove state aka drops (skip script/access prefixed ones)
+    for i = #playerStates, 1, -1 do
+        local s = playerStates[i]
+        if not inventoryStates[s]
+            and s:sub(1, 6) ~= 'SCRIPT'
+            and s:sub(1, 6) ~= 'ACCESS'
+        then
+            table.remove(playerStates, i)
+            changed = true
+        end
+    end
+    if changed then
+        char:SetData('States', playerStates)
+    end
+end
+
 function server.syncInventory(inv)
     if not inv?.player then return end
     local player = exports['mythic-base']:FetchComponent('Fetch'):Source(inv.player.source)
@@ -66,6 +131,7 @@ function server.syncInventory(inv)
     local char = player:GetData('Character')
     if not char then return end
     char:SetData('Cash', Inventory.GetItemCount(inv, 'money') or 0)
+    updateCharacterStates(inv.player.source, inv)
 end
 
 function server.hasGroup(inv, group)
@@ -121,7 +187,9 @@ Inventory.Items = {
     GetCount = function(self, owner, invType, itemName)
         local target = toTarget(owner, invType)
         if not target then return 0 end
-        return Inventory.GetItemCount(Inventory(target), itemName) or 0
+        local inv = Inventory(target)
+        if not inv then return 0 end
+        return Inventory.GetItemCount(inv, itemName) or 0
     end,
 
     GetFirst = function(self, owner, invType, itemName)
@@ -135,7 +203,7 @@ Inventory.Items = {
         local target = toTarget(owner, invType)
         if not target then return {} end
         local inv = Inventory(target)
-        if not inv then return {} end
+        if not inv or not inv.items then return {} end
         local result = {}
         for _, slot in pairs(inv.items) do
             if slot.name == itemName then
@@ -453,6 +521,19 @@ Inventory.OpenSecondary = function(self, source, invType, owner, vehClass, vehMo
     end
 end
 
+Inventory.Poly = {
+    Create = function(self, storage)
+        if not storage or not storage.id then return end
+        local inv = storage.data and storage.data.inventory
+        local owner = (inv and inv.owner) or storage.id
+
+        if not registeredStashes[owner] then
+            exports['ox_inventory']:RegisterStash(owner, storage.id, 50, 100000)
+            registeredStashes[owner] = true
+        end
+    end
+}
+
 -- state bag sync, items with a state field in their def auto-set that state on the character
 -- skips SCRIPT_ and ACCESS_ prefixes, those are handled elsewhere
 local function UpdateCharacterItemStates(source, itemName, adding)
@@ -494,6 +575,30 @@ exports['ox_inventory']:registerHook('openInventory', function(payload)
     TriggerEvent('Inventory:Server:Opened', payload.source, owner, invTypeNum)
 end)
 
+local _Loot = {}
+
+_Loot.CustomWeightedSet = function(self, items, source, owner, invType)
+    if not items or #items == 0 then return end
+    local total = 0
+    for _, v in ipairs(items) do total = total + (v.weight or 1) end
+    local roll = math.random() * total
+    local cumulative = 0
+
+    for _, v in ipairs(items) do
+        cumulative = cumulative + (v.weight or 1)
+        if roll <= cumulative then
+            if source and v.name then
+                local target = toTarget(owner or source, invType or 1)
+                exports['ox_inventory']:AddItem(target, v.name, v.count or 1)
+            end
+            return v
+        end
+    end
+end
+
+_Loot.WeightedSet = _Loot.CustomWeightedSet
+exports['mythic-base']:RegisterComponent('Loot', _Loot)
+
 -- TODO: crafting system is NOT bridged
 -- mythic-crafting uses:
 --   Inventory.Items:Has(source, name, count)       <- shimmed above
@@ -516,14 +621,6 @@ local CraftingStub = {
     CanCraft = function(self, ...) return false end,
     StartCraft = function(self, ...) return false end,
 }
-
--- TODO: loot component is NOT bridged
--- mythic-loot/server.lua registers as FetchComponent('_LOOT')
--- resources call Loot:CustomWeightedSet(items) which internally calls Inventory:AddItem
--- since Inventory:AddItem IS shimmed, loot adding items should work IF we register the component
--- but _LOOT itself isnt a component we control, mythic-loot registers it itself
--- as long as mythic-loot loads and calls FetchComponent('Inventory') for its AddItem calls it should be fine
--- FIXIT: verify mythic-loot actually loads and registers its _LOOT component in the mythic-base proxy
 
 -- mythic lifecycle hooks
 AddEventHandler('Proxy:Shared:RegisterReady', function()
@@ -577,6 +674,19 @@ AddEventHandler('Proxy:Shared:RegisterReady', function()
 
     exports['mythic-base']:RegisterComponent('Inventory', Inventory)
     exports['mythic-base']:RegisterComponent('Crafting', CraftingStub)
+end)
+
+-- load mythic items from within this execution chain
+-- (standalone server_scripts have their own require cache and write to a dead ItemList)
+local ok, err = pcall(require, 'modules.bridge.mythic.items')
+if not ok then print('^1[mythic-ox-bridge] items load error: ' .. tostring(err) .. '^0') end
+
+-- shops use exports['ox_inventory']:RegisterShop which isn't available until ox is fully ready
+-- defer until shared.ready is true
+CreateThread(function()
+    while not shared.ready do Wait(0) end
+    local ok2, err2 = pcall(require, 'modules.bridge.mythic.shops')
+    if not ok2 then print('^1[mythic-ox-bridge] shops load error: ' .. tostring(err2) .. '^0') end
 end)
 
 -- rebuild groups when someones job changes

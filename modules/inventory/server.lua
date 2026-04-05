@@ -2260,7 +2260,7 @@ function Inventory.GetItemCount(inv, itemName, metadata, strict)
 	local inventory = Inventory(inv)
 	local item = Items(itemName) --[[@as OxServerItem?]]
 
-	if not inventory or not item then return 0 end
+	if not inventory or not item or not inventory.items then return 0 end
 
 	metadata = assertMetadata(metadata)
 	local count = 0

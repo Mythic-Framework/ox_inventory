@@ -26,9 +26,8 @@ ox_libs {
 server_scripts {
     '@oxmysql/lib/MySQL.lua',
     'init.lua',
-    'modules/bridge/mythic/items.lua',
-    'modules/bridge/mythic/shops.lua',
     'modules/bridge/mythic/migration.lua',
+    'modules/bridge/mythic/commands.lua',
 }
 
 client_scripts {

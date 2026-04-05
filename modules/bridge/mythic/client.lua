@@ -15,6 +15,41 @@
 -- most items will just fire instantly without the animation which looks jank
 -- FIXIT: when server.UseItem fires, check itemDef for pbConfig and trigger ox progress bar manually
 
+-- ============================================================
+-- Stubs defined first so load-time RegisterComponent calls work
+-- ============================================================
+
+local WeaponsStub = {}
+
+WeaponsStub.GetEquippedItem = function(self)
+    return nil
+end
+
+WeaponsStub.GetEquippedHash = function(self)
+    return nil
+end
+
+WeaponsStub.UnequipIfEquippedNoAnim = function(self)
+    local weapon = GetSelectedPedWeapon(PlayerPedId())
+    if weapon and weapon ~= `WEAPON_UNARMED` then
+        SetCurrentPedWeapon(PlayerPedId(), `WEAPON_UNARMED`, true)
+    end
+end
+
+local CraftingStub = {
+    RegisterBench = function() end,
+    CanCraft      = function() return false end,
+}
+
+-- Register stubs immediately at load time — other resources fetch these
+-- during their RegisterReady handlers which fire after ox_inventory loads
+exports['mythic-base']:RegisterComponent('Weapons', WeaponsStub)
+exports['mythic-base']:RegisterComponent('Crafting', CraftingStub)
+
+-- ============================================================
+-- Inventory shim
+-- ============================================================
+
 -- every mythic resource gets Inventory via FetchComponent('Inventory') not a global
 -- we build the client shim table and register it as the Inventory component
 local ClientInventory = {
@@ -60,6 +95,13 @@ local ClientInventory = {
         Has = function(self, item, count)
             return self:GetCount(item) >= (count or 1)
         end,
+
+        -- mythic-ped calls this to check if the player has a cosmetic item equipped
+        -- searches item definitions for staticMetadata matching ped appearance
+        -- our items don't carry staticMetadata so we always return nil (safe — means "not catalogued item")
+        GetWithStaticMetadata = function(self, masterKey, mainIdName, textureIdName, gender, data)
+            return nil
+        end,
     },
 
     Search = {
@@ -67,11 +109,19 @@ local ClientInventory = {
             exports['ox_inventory']:openInventory('player', serverId)
         end,
     },
+
+    -- mythic-phone calls Inventory.Close:All() before opening
+    Close = {
+        All = function(self)
+            exports['ox_inventory']:closeInventory()
+        end,
+    },
 }
 
 -- register with mythic-base so every resource that calls FetchComponent('Inventory') gets our shim
 AddEventHandler('Proxy:Shared:RegisterReady', function()
     exports['mythic-base']:RegisterComponent('Inventory', ClientInventory)
+
     local Callbacks = exports['mythic-base']:FetchComponent('Callbacks')
     local Progress = exports['mythic-base']:FetchComponent('Progress')
 
@@ -219,3 +269,98 @@ end)
 AddStateBagChangeHandler('doingAction', ('player:%s'):format(cache.serverId), function(_, _, value)
     LocalPlayer.state:set('invBusy', value or false, false)
 end)
+
+local ClientItems = require 'modules.items.shared'
+local allItems = lib.load('data.mythic-items.index')
+
+if allItems then
+    local count = 0
+    for _, item in ipairs(allItems) do
+        if item.name and not ClientItems[item.name] then
+            ClientItems[item.name] = {
+                name = item.name,
+                label = item.label or item.name,
+                description = item.description or nil,
+                weight = item.weight or 0,
+                stack = item.isStackable ~= false and (item.isStackable or true),
+                close = item.closeUi or true,
+                count = 0,
+            }
+            count = count + 1
+        end
+    end
+    print(string.format('^2[mythic-ox-bridge] registered %d items client-side^0', count))
+end
+
+local mythicItemCache = {}
+
+AddEventHandler('ox_inventory:updateInventory', function()
+    mythicItemCache = {}
+    local idx = 0
+    for slot, slotData in pairs (PlayerData.inventory or {}) do
+        if slotData and slotData.name then
+            idx = idx + 1
+            mythicItemCache[idx] = {
+                Name = slotData.name,
+                Label = slotData.label or slotData.name,
+                Slot = slot,
+                Count = slotData.count or 0,
+                Quality = (slotData.metadata or {}).quality or 100,
+                MetaData = slotData.metadata or {},
+                Owner = tostring(cache.serverId),
+                invType = 1,
+            }
+        end
+    end
+    TriggerEvent('Inventory:Client:Cache', mythicItemCache)
+end)
+
+-- swap has item checks to use local cache (avoid server roundtrip per frame)
+ClientInventory.Check.Player.HasItem = function(self, item, count)
+    if next(mythicItemCache) then
+        local total = 0
+        for _, slot in pairs(mythicItemCache) do
+            if slot.Name == item then total = total + (slot.Count or 0) end
+        end
+        return total >= (count or 1)
+    end
+    return (exports['ox_inventory']:Search('count', item) or 0) >= (count or 1)
+end
+
+ClientInventory.Check.Player.HasItems = function(self, items)
+    for _,v in ipairs(items) do
+        local name = v.item or v.name
+        local needed = v.count or 1
+        local total = 0
+        for _, slot in pairs(mythicItemCache) do
+            if slot.Name == name then total = total + (slot.Count or 0) end
+        end
+        if total < needed then return false end
+    end
+    return true
+end
+
+ClientInventory.Check.Player.HasAnyItems = function(self, items)
+    for _, v in ipairs(items) do
+        local name = v.item or v.name
+        local needed = v.count or 1
+        local total = 0
+        for _, slot in pairs(mythicItemCache) do
+            if slot.Name == name then total = total + (slot.Count or 0) end
+        end
+        if total >= needed then return true end
+    end
+    return false
+end
+
+ClientInventory.Items.GetCount = function(self, item)
+    local total = 0
+    for _, slot in pairs(mythicItemCache) do
+        if slot.Name == item then total = total + (slot.Count or 0) end
+    end
+    return total
+end
+
+ClientInventory.Items.Has = function(self, item, count)
+    return ClientInventory.Items:GetCount(item) >= (count or 1)
+end
