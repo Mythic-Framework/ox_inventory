@@ -616,28 +616,90 @@ exports['ox_inventory']:registerHook('openInventory', function(payload)
     TriggerEvent('Inventory:Server:Opened', payload.source, owner, invTypeNum)
 end)
 
-local _Loot = {}
-
-_Loot.CustomWeightedSet = function(self, items, source, owner, invType)
-    if not items or #items == 0 then return end
+local function weightedRandom(set)
     local total = 0
-    for _, v in ipairs(items) do total = total + (v.weight or 1) end
+    for _, v in ipairs(set) do total = total + v[1] end
     local roll = math.random() * total
-    local cumulative = 0
-
-    for _, v in ipairs(items) do
-        cumulative = cumulative + (v.weight or 1)
-        if roll <= cumulative then
-            if source and v.name then
-                local target = toTarget(owner or source, invType or 1)
-                exports['ox_inventory']:AddItem(target, v.name, v.count or 1)
-            end
-            return v
-        end
+    local data = 0
+    for _, v in ipairs(set) do
+        data = data + v[1]
+        if roll <= data then return v[2] end
     end
 end
 
+local _Loot = {}
+
+_Loot.CustomSet = function(self, set, owner, invType, count)
+    local target = toTarget(owner, invType)
+    if not target then return end
+    local item = set[math.random(#set)]
+    return exports['ox_inventory']:AddItem(target, item, count or 1)
+end
+
+_Loot.CustomSetWithCount = function(self, set, owner, invType)
+    local target = toTarget(owner, invType)
+    if not target then return end
+    local i = set[math.random(#set)]
+    return exports['ox_inventory']:AddItem(target, i.name, math.random(i.min or 1 , i.max or 1))
+end
+
+
+_Loot.CustomWeightedSet = function(self, set, owner, invType)
+    local target = toTarget(owner, invType)
+    if not target then return end
+    local item = weightedRandom(set)
+    if item then return exports['ox_inventory']:AddItem(target, item, 1) end
+end
+
+_Loot.CustomWeightedSetWithCount = function(self, set, owner, invType, dontAdd)
+    local item = weightedRandom(set)
+    if not item or not item.name then return end
+    local count = math.random(item.min or 1, item.max or 1)
+    if dontAdd then return { name = item.name, count = count } end
+    local target = toTarget(owner, invType)
+    if not target then return end 
+    return exports['ox_inventory']:AddItem(target, item.name, count, item.metadata or {})
+end
+
+_Loot.CustomWeightedSetWithCountAndModifier = function(self, set, owner, invType, modifier, dontAdd)
+    local item = weightedRandom(set)
+    if not item or not item.name then return end
+    local count = math.floor(math.random(item.min or 1, item.max or 1 ) * (modifier or 1))
+    if dontAdd then return { name = item.name, count = count } end
+    local target = toTarget(owner, invType)
+    if not target then return end
+    return exports['ox_inventory']:AddItem(target, item.name, count, item.metadata or {})
+end
+
 _Loot.WeightedSet = _Loot.CustomWeightedSet
+
+_Loot.Sets = {
+    Gem = function(self, owner, invType)
+        local target = toTarget(owner, invType)
+        if not target then return end
+        local gem = weightedRandom({
+              {8,  'diamond'},
+              {5,  'emerald'},
+              {10, 'sapphire'},
+              {12, 'ruby'},
+              {16, 'amethyst'},
+              {18, 'citrine'},
+              {31, 'opal'},
+        })
+        if gem then exports['ox_inventory']:AddItem(target, gem, 1) end
+    end,
+    Ore = function(self, owner, invType, count)
+        local target = toTarget(owner, invType)
+        if not target then return end
+        local ore = weightedRandom({
+            {18, 'goldore'},
+            {27, 'silverore'},
+            {55, 'ironore'},
+        })
+        if ore then exports['ox_inventory']:AddItem(target, ore, count or 1) end
+    end,
+}
+
 exports['mythic-base']:RegisterComponent('Loot', _Loot)
 
 -- TODO: crafting system is NOT bridged
@@ -703,7 +765,15 @@ AddEventHandler('Proxy:Shared:RegisterReady', function()
         })
         if _newCharSources[source] then
             _newCharSources[source] = nil
-            local startItems = Config:GetData('StartItems') or {}
+            local startItems = {
+                { name = 'govid',         count = 1 },
+                { name = 'phone',         count = 1 },
+                { name = 'water',         count = 5 },
+                { name = 'sandwich_blt',  count = 5 },
+                { name = 'bandage',       count = 5 },
+                { name = 'coffee',        count = 2 }, 
+            }
+
             for slot, item in ipairs(startItems) do
                 exports['ox_inventory']:AddItem(source, item.name, item.count, {}, slot)
             end
