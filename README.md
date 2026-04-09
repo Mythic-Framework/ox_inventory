@@ -66,7 +66,10 @@ The bridge lives in `modules/bridge/mythic/` and is loaded automatically when `i
 
 **Required in `server.cfg`:**
 ```
-set inventory:framework "mythic"
+setr inventory:framework "mythic"
+setr inventory:slots 50
+setr inventory:weight 30000
+setr inventory:target 0
 ```
 
 ---
