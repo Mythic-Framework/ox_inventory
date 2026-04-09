@@ -89,7 +89,7 @@ Item add/remove notifications use ox's built-in notify. Should route through `my
 ```bash
 cd web
 bun install
-bun run dev      # dev server with hot reload
+bun run start      # dev server with hot reload
 bun run build    # production build
 ```
 
