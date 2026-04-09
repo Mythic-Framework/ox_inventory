@@ -335,7 +335,23 @@ Inventory.AddItem = function(self, owner, name, count, metadata, invType)
         print('^1[mythic-ox-bridge] AddItem: could not resolve owner ' .. tostring(owner) .. '^0')
         return false
     end
-    return _origAddItem(Inventory(target), name, count or 1, metadata or {})
+    metadata = type(metadata) == 'table' and metadata or {}
+    local itemDef = Items(name:lower())
+    if itemDef and itemDef.staticMetadata then
+        for k, v in pairs(itemDef.staticMetadata) do
+            if metadata[k] == nil then metadata[k] = v end
+        end
+    end
+    -- auto-generate serial for weapons that don't already have one
+    local mtype = itemDef and itemDef.server and itemDef.server.mythicType or 0
+    if mtype == 2 and not metadata.SerialNumber then
+        metadata.SerialNumber = math.random(100000, 999999)
+    elseif mtype == 10 and not metadata.Container then
+        metadata.Container = ('container:%d%d'):format(os.time(), math.random(1000, 9999))
+    elseif mtype == 11 and not metadata.Quality then
+        metadata.Quality = math.random(100)
+    end
+    return _origAddItem(Inventory(target), name, count or 1, metadata)
 end
 
 Inventory.RemoveItem = function(self, owner, name, count, metadata, invType)
@@ -889,11 +905,42 @@ AddEventHandler('Proxy:Shared:RegisterReady', function()
                 { name = 'water',         count = 5 },
                 { name = 'sandwich_blt',  count = 5 },
                 { name = 'bandage',       count = 5 },
-                { name = 'coffee',        count = 2 }, 
+                { name = 'coffee',        count = 2 },
             }
 
+            local function buildStartMeta(itemName)
+                local itemDef = Items(itemName:lower())
+                local meta = {}
+                -- apply staticMetadata from item def
+                if itemDef and itemDef.staticMetadata then
+                    for k, v in pairs(itemDef.staticMetadata) do meta[k] = v end
+                end
+                local mtype = itemDef and itemDef.server and itemDef.server.mythicType or 0
+                if mtype == 2 and not meta.SerialNumber then
+                    meta.SerialNumber = math.random(100000, 999999)
+                elseif mtype == 10 and not meta.Container then
+                    meta.Container = ('container:%d%d'):format(os.time(), math.random(1000, 9999))
+                elseif mtype == 11 and not meta.Quality then
+                    meta.Quality = math.random(100)
+                end
+                -- items that need character data
+                if itemName == 'govid' then
+                    local genStr = char:GetData('Gender') == 1 and 'Female' or 'Male'
+                    meta.Name       = ('%s %s'):format(char:GetData('First') or '', char:GetData('Last') or '')
+                    meta.Gender     = genStr
+                    meta.PassportID = char:GetData('User')
+                    meta.StateID    = char:GetData('SID')
+                    meta.DOB        = char:GetData('DOB')
+                elseif itemName == 'phone' then
+                    meta.PhoneNumber = char:GetData('Phone')
+                elseif itemName == 'cigarette_pack' and not meta.Count then
+                    meta.Count = 30
+                end
+                return meta
+            end
+
             for slot, item in ipairs(startItems) do
-                exports['ox_inventory']:AddItem(source, item.name, item.count, {}, slot)
+                exports['ox_inventory']:AddItem(source, item.name, item.count, buildStartMeta(item.name), slot)
             end
         end
         TriggerClientEvent('Inventory:Client:PolySetup', source, _polyInvs)

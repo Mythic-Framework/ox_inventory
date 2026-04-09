@@ -93,6 +93,19 @@ const SlotTooltip: React.ForwardRefRenderFunction<
                   )}
                 </Fragment>
               ))}
+              {item.metadata &&
+                Object.entries(item.metadata)
+                  .filter(([key, val]) =>
+                    typeof val !== 'object' &&
+                    val !== null &&
+                    val !== undefined &&
+                    !['description', 'label', 'type', 'ammo', 'serial', 'components', 'weapontint', 'container', 'durability', 'degrade'].includes(key) &&
+                    !additionalMetadata.find((d) => d.metadata === key)
+                  )
+                  .map(([key, val]) => {
+                    const label = key.replace(/([A-Z][a-z]+|[A-Z]+(?=[A-Z]|$))/g, ' $1').trim();
+                    return <p key={`dyn-${key}`}>{label}: {String(val)}</p>;
+                  })}
             </>
           ) : (
             <div className="tooltip-ingredients">

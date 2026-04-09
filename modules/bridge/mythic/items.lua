@@ -25,6 +25,7 @@ local function ConvertItem(item)
             isRemoved    = item.isRemoved or false,
             animConfig = item.animConfig or nil,
         },
+        staticMetadata = item.staticMetadata or nil,
     }
 
     if item.type == 2 and item.weapon then
