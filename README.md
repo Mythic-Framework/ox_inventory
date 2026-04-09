@@ -1,8 +1,8 @@
 <div align="center">
 
-![Banner](https://r2.fivemanage.com/b8BG4vav9CjKMUdz6iKnY/mythic_banner_old.png)
+![Banner](https://r2.fivemanage.com/BkKrN1m7N9VFzzQ3Ht2i7/Banner.PNG)
 
-# ox_inventory
+#  ox_inventory + mythic
 
 ### *Slot-based inventory system with full Mythic Framework compatibility*
 
@@ -25,9 +25,9 @@
 > This is a **custom fork** of [ox_inventory](https://github.com/communityox/ox_inventory) — do not update from upstream without reviewing bridge compatibility.
 
 > [!NOTE]
-> **Working end-to-end:** Items, weapons, shops, stashes, trunks/gloveboxes, drops, crafting benches (ped spawn + targeting + open), cash sync (bidirectional with mythic-finance), character lifecycle, job group restrictions, item metadata (staticMetadata + type-based auto-generation), starter items with character data, item use with emotes + progress bars via mythic Progress component.
+> **Working end-to-end:** Items, weapons, shops, stashes, trunks/gloveboxes, drops, crafting benches (ped spawn + targeting + open), cash sync (bidirectional with mythic-finance), character lifecycle, job group restrictions, item metadata (staticMetadata + type-based auto-generation), starter items with character data.
 >
-> **Pending:** Crafting UI (ox slot grid works but needs mythic-style panel), schematics per-player unlock + DB storage, notifications via mythic-notify.
+> **Pending:** Crafting UI (ox slot grid works but needs mythic-style panel), schematics per-player unlock + DB storage, item use progress bars, notifications via mythic-notify.
 
 ---
 
@@ -47,20 +47,10 @@ The bridge lives in `modules/bridge/mythic/` and is loaded automatically when `i
 
 | Component | Status |
 |-----------|--------|
-| `FetchComponent('Inventory')` server + client shims | ✅ |
-| `Inventory.Items` — RegisterUse, RemoveSlot, RemoveId, RemoveAll, RemoveList, Remove | ✅ |
-| `Inventory.Items` — GetCount, GetFirst, GetAll, GetData, Has, HasAnyItems | ✅ |
-| `Inventory.Items` — GetCounts, GetWeights, GetAllOfType | ❌ Not bridged |
-| `Inventory` — AddItem, GetSlot, GetFreeSlotNumbers, HasItems, HasAnyItems | ✅ |
-| `Inventory` — UpdateMetaData, SetMetadataKey | ✅ |
-| `Inventory` — AddSlot, SetMetaDataKey (name mismatch), IsEnabled, ForceClose, CloseSecondary | ❌ Not bridged |
-| `Inventory.OpenSecondary` — stashes, shops, trunks, gloveboxes | ✅ |
+| `FetchComponent('Inventory')` — all shims | ✅ |
+| `Inventory.Items` — RegisterUse, Remove, Has, HasAnyItems | ✅ |
 | Item database — all mythic item files converted at startup | ✅ |
-| Item metadata — `staticMetadata`, type-based auto-generation, character data | ✅ |
-| Item tooltip — dynamic metadata display (all keys auto-rendered) | ✅ |
-| Client item cache — `Inventory:Client:Cache`, `HasItem`, `HasItems`, `GetCount`, `Has` | ✅ |
-| Client `Items` — GetCounts, GetTypeCounts, HasType, GetAllOfType | ❌ Not bridged |
-| Client `Inventory` — Enable, Disable, IsEnabled | ❌ Not bridged |
+| Item metadata — `staticMetadata`, type-based auto-generation, govid char data | ✅ |
 | Shops — bundled from mythic-inventory config, location + programmatic | ✅ |
 | Stashes, trunks, gloveboxes, drops | ✅ |
 | Character spawn / logout / job update | ✅ |
@@ -82,9 +72,6 @@ set inventory:framework "mythic"
 ---
 
 ## ⏳ Pending
-
-### Missing Inventory Shims
-Several lower-traffic server and client shims are not yet implemented. Server-side: `Inventory.Items.GetCounts` (all item counts as table), `Inventory.Items.GetWeights` (current/max weight), `Inventory.Items.GetAllOfType` (items by mythic type), `Inventory.AddSlot` (add to exact slot), `Inventory.SetMetaDataKey` (naming mismatch — we expose `SetMetadataKey`), `Inventory.IsEnabled`, `Inventory.ForceClose`, `Inventory.CloseSecondary`. Client-side: `Items.GetCounts`, `Items.GetTypeCounts`, `Items.HasType`, `Items.GetAllOfType`, `Inventory.Enable/Disable/IsEnabled`. These are rarely called but may cause nil-call crashes in scripts that use them.
 
 ### Crafting UI
 The current crafting UI is ox's default — a slot grid where hovering a slot shows ingredients. A mythic-style panel (recipe list left, detail + ingredients + craft button right, search, craftable filter) is planned using Mantine once installed.
@@ -115,9 +102,6 @@ bun run build    # production build
 | `mythic-base` | Core framework (components, middleware, fetch, callbacks) |
 | `ox_lib` | Utility library (points, callbacks, notify, keybinds) |
 | `oxmysql` | Database layer |
-
-> [!NOTE]
-> `mythic-inventory` does **not** need to be running. Item definitions are bundled under `data/mythic-items/` and crafting configs under `data/mythic-crafting/`.
 
 ---
 
