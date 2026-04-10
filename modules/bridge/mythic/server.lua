@@ -76,6 +76,31 @@ end
 
 local ItemStateMap = buildItemStateMap()
 
+-- index[itemType][drawableId][textureId] = itemName
+-- used by GetWithStaticMetadata for O(1) clothing item lookup
+local function buildStaticMetaIndex()
+    local index = {}
+    local allItems = lib.load('data.mythic-items.index')
+    if allItems then
+        for _, item in ipairs(allItems) do
+            if item.name and item.staticMetadata then
+                for compType, compData in pairs(item.staticMetadata) do
+                    if type(compData) == 'table' and compData.drawableId ~= nil and compData.textureId ~= nil then
+                        index[compType] = index[compType] or {}
+                        index[compType][compData.drawableId] = index[compType][compData.drawableId] or {}
+                        if not index[compType][compData.drawableId][compData.textureId] then
+                            index[compType][compData.drawableId][compData.textureId] = item.name
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return index
+end
+
+local StaticMetaIndex = buildStaticMetaIndex()
+
 local function updateCharacterStates(source, inv)
     local player = exports['mythic-base']:FetchComponent('Fetch'):Source(source)
     if not player then return end
@@ -178,8 +203,21 @@ Inventory.Items = {
         ItemCallbacks[itemName][id] = cb
     end,
 
-    GetData = function (self, name)
-       return Items(name) 
+    GetData = function(self, name)
+        return Items(name)
+    end,
+
+    -- searches items for one whose staticMetadata[itemType] matches componentData[key1] and componentData[key2]
+    GetWithStaticMetadata = function(self, itemType, key1, key2, gender, componentData)
+        if not componentData then return nil end
+        local val1 = componentData[key1]
+        local val2 = componentData[key2]
+        if val1 == nil or val2 == nil then return nil end
+        local byType = StaticMetaIndex[itemType]
+        if not byType then return nil end
+        local byKey1 = byType[val1]
+        if not byKey1 then return nil end
+        return byKey1[val2]
     end,
 
     GetCount = function(self, owner, invType, itemName)
