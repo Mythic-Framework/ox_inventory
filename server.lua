@@ -562,7 +562,7 @@ RegisterCommand('convertinventory', function(source, args)
 end, true)
 
 
-lib.addCommand({'additem', 'giveitem'}, {
+lib.addCommand({'additem'}, {
 	help = 'Gives an item to a player with the given id',
 	params = {
 		{ name = 'target', type = 'playerId', help = 'The player to receive the item' },

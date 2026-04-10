@@ -2,9 +2,9 @@ import { createTheme, MantineColorsTuple } from '@mantine/core';
 
 export const tokens = {
     // Backgrounds
-    bgMain:        '#121025',
-    bgLight:       '#1c1a30',
-    bgDark:        '#0a0914',
+    bgMain:        'rgba(18,16,37,0.92)',
+    bgLight:       'rgba(28,26,48,0.92)',
+    bgDark:        'rgba(10,9,20,0.92)',
     // Teal borders
     borderTeal:       'rgba(32,134,146,0.2)',
     borderTealHover:  'rgba(32,134,146,0.5)',
@@ -49,7 +49,7 @@ export const theme = createTheme({
     components: {
         Paper: {
             defaultProps: {
-                bg: '#121025',
+                bg: 'rgba(18,16,37,0.92)',
             },
         },
     ScrollArea: {

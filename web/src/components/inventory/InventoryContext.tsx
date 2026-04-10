@@ -48,7 +48,7 @@ const menuStyles = {
     fontSize: 13,
     fontWeight: 600,
     borderRadius: 2,
-    '&:hover': {
+    '&[data-hovered]': {
       background: tokens.selectedBg,
       color: '#fff',
     },

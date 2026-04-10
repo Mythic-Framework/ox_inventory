@@ -169,6 +169,25 @@ function server.hasLicense(inv, name)
     return false
 end
 
+-- [compType][drawableId][textureId] = itemName
+StaticMetaIndex = nil
+do
+    local allItems = lib.load('data.mythic-items.index') or {}
+    local idx = {}
+    for _, item in ipairs(allItems) do
+        if item.staticMetadata then
+            for compType, meta in pairs(item.staticMetadata) do
+                if type(meta) == 'table' and meta.drawableId ~= nil and meta.textureId ~= nil then
+                    idx[compType] = idx[compType] or {}
+                    idx[compType][meta.drawableId] = idx[compType][meta.drawableId] or {}
+                    idx[compType][meta.drawableId][meta.textureId] = item.name
+                end
+            end
+        end
+    end
+    StaticMetaIndex = idx
+end
+
 -- every single mythic resource registers item callbacks through here so this HAS to work
 local ItemCallbacks = {}
 
@@ -277,6 +296,21 @@ Inventory.Items = {
         for _, v in ipairs(items) do
             self:Remove(owner, invType, v.name, v.count or 1)
         end
+    end,
+
+    -- mythic-ped calls this to find clothing items by staticMetadata (drawableId/textureId)
+    -- we build an index at startup: [compType][drawableId][textureId] = itemName
+    GetWithStaticMetadata = function(self, masterKey, mainIdName, textureIdName, gender, data)
+        if not StaticMetaIndex then return nil end
+        local byMaster = StaticMetaIndex[masterKey]
+        if not byMaster then return nil end
+        local byMain = byMaster[data[mainIdName]]
+        if not byMain then return nil end
+        local itemName = byMain[data[textureIdName]]
+        if not itemName then return nil end
+        local itemDef = Items(itemName)
+        if not itemDef then return nil end
+        return { Name = itemName, Label = itemDef.label }
     end,
 
 }

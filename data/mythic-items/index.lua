@@ -32,12 +32,9 @@ local files = {
     'data.mythic-items.food.uwu',
     'data.mythic-items.weapons.base',
     'data.mythic-items.weapons.ammo',
+    'data.mythic-items.weapons.bullets',
     'data.mythic-items.weapons.attachments',
     'data.mythic-items.weapons.bobcat',
-    -- schematics reference _schematics global from mythic crafting (disabled/stubbed)
-    -- 'data.mythic-items.schematics.base',
-    -- 'data.mythic-items.schematics.attachments',
-    -- 'data.mythic-items.schematics.weapons',
 }
 
 local all = {}

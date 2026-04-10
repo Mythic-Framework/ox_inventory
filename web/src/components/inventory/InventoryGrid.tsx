@@ -33,7 +33,10 @@ const InventoryGrid: React.FC<{ inventory: Inventory }> = ({ inventory }) => {
           </Text>
           {inventory.maxWeight ? (
             <Text size="sm" c={tokens.textMuted} ff="'Rajdhani', sans-serif">
-              {weight / 1000}/{inventory.maxWeight / 1000}kg
+              {weight >= 1000
+                ? `${(weight / 1000).toLocaleString('en-us', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}kg`
+                : `${weight.toLocaleString('en-us', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}g`
+              }/{(inventory.maxWeight / 1000).toLocaleString('en-us', { maximumFractionDigits: 1 })}kg
             </Text>
           ) : null}
         </div>

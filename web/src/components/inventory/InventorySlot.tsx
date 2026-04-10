@@ -1,7 +1,7 @@
 import React, { useCallback, useRef } from 'react';
 import { DragSource, Inventory, InventoryType, Slot, SlotWithItem } from '../../typings';
 import { useDrag, useDragDropManager, useDrop } from 'react-dnd';
-import { useAppDispatch } from '../../store';
+import { useAppDispatch, useAppSelector } from '../../store';
 import { onDrop } from '../../dnd/onDrop';
 import { onBuy } from '../../dnd/onBuy';
 import { Items } from '../../store/items';
@@ -12,7 +12,7 @@ import { onCraft } from '../../dnd/onCraft';
 import useNuiEvent from '../../hooks/useNuiEvent';
 import { ItemsPayload } from '../../reducers/refreshSlots';
 import { closeTooltip, openTooltip } from '../../store/tooltip';
-import { openContextMenu } from '../../store/contextMenu';
+import { openContextMenu, closeContextMenu } from '../../store/contextMenu';
 import { useMergeRefs } from '@floating-ui/react';
 import { Badge, Progress } from '@mantine/core';
 import { tokens } from '../../theme';
@@ -31,6 +31,7 @@ const InventorySlot: React.ForwardRefRenderFunction<HTMLDivElement, SlotProps> =
   const manager = useDragDropManager();
   const dispatch = useAppDispatch();
   const timerRef = useRef<number | null>(null);
+  const contextMenuOpen = useAppSelector((state) => state.contextMenu.coords !== null);
 
   const canDrag = useCallback(() => {
     return canPurchaseItem(item, { type: inventoryType, groups: inventoryGroups }) && canCraftItem(item, inventoryType);
@@ -105,6 +106,11 @@ const InventorySlot: React.ForwardRefRenderFunction<HTMLDivElement, SlotProps> =
     event.preventDefault();
     if (inventoryType !== 'player' || !isSlotWithItem(item)) return;
 
+    dispatch(closeTooltip());
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
     dispatch(openContextMenu({ item, coords: { x: event.clientX, y: event.clientY } }));
   };
 
@@ -155,6 +161,7 @@ const InventorySlot: React.ForwardRefRenderFunction<HTMLDivElement, SlotProps> =
           className="item-slot-wrapper"
           style={{ position: 'relative', zIndex: 2 }}
           onMouseEnter={() => {
+            if (contextMenuOpen) return;
             timerRef.current = window.setTimeout(() => {
               dispatch(openTooltip({ item, inventoryType }));
             }, 500) as unknown as number;
@@ -178,9 +185,11 @@ const InventorySlot: React.ForwardRefRenderFunction<HTMLDivElement, SlotProps> =
                   ? item.weight >= 1000
                     ? `${(item.weight / 1000).toLocaleString('en-us', {
                         minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
                       })}kg `
                     : `${item.weight.toLocaleString('en-us', {
                         minimumFractionDigits: 0,
+                        maximumFractionDigits: 2,
                       })}g `
                   : ''}
               </p>
