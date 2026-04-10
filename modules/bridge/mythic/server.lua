@@ -318,9 +318,35 @@ Inventory.Items = {
 -- ox calls this when someone uses a non-weapon item with no consume set
 -- translates ox slot data back into the mythic item format that callbacks expect
 function server.UseItem(source, itemName, data)
+    local itemDef = Items(itemName)
+
+    -- mythic weapon (type 2): toggle equip/unequip on client via mythic system
+    if itemDef and itemDef.server and itemDef.server.mythicType == 2 then
+        TriggerClientEvent('Weapons:Client:Use', source, {
+            Name     = itemName,
+            Slot     = data.slot,
+            Count    = data.count or 0,
+            MetaData = data.metadata or {},
+            Owner    = tostring(source),
+            invType  = 1,
+        })
+        return
+    end
+
+    -- mythic ammo (type 9): ask client if weapon accepts this ammo, remove only on success
+    if itemDef and itemDef.server and itemDef.server.mythicType == 9 then
+        local success = lib.callback.await('ox_inventory:bridge:addAmmo', source, {
+            ammoType   = itemDef.server.ammoType,
+            bulletCount = itemDef.server.bulletCount or 10,
+        })
+        if success then
+            Inventory.RemoveItem(Inventory(source), itemName, 1, data.metadata, data.slot)
+        end
+        return
+    end
+
     local callbacks = ItemCallbacks[itemName]
     local mythicItem = toSlot(data, source, 1)
-    local itemDef = Items(itemName)
     local animConfig = itemDef and itemDef.server and itemDef.server.animConfig
 
     if animConfig then
@@ -352,6 +378,35 @@ function server.UseItem(source, itemName, data)
         end
     end
 end
+
+-- client saves weapon ammo into item metadata when unequipping or on timer
+RegisterServerEvent('Weapon:Server:UpdateAmmo', function(slot, ammo, clip)
+    local source = source
+    local inv = Inventory(source)
+    if not inv then return end
+    slot = tonumber(slot)
+    if not slot then return end
+    local item = inv.items[slot]
+    if not item then return end
+    local meta = table.clone(item.metadata or {})
+    meta.ammo = ammo
+    meta.clip = clip
+    Inventory.SetMetadata(inv, slot, meta)
+end)
+
+RegisterServerEvent('Weapon:Server:UpdateAmmoDiff', function(slot, ammo, clip)
+    local source = source
+    local inv = Inventory(source)
+    if not inv then return end
+    slot = tonumber(slot)
+    if not slot then return end
+    local item = inv.items[slot]
+    if not item then return end
+    local meta = table.clone(item.metadata or {})
+    meta.ammo = (meta.ammo or 0) + (ammo or 0)
+    meta.clip = clip
+    Inventory.SetMetadata(inv, slot, meta)
+end)
 
 -- the shims that make FetchComponent('Inventory') work without changing any other resource
 -- capture originals BEFORE replacing so inner calls use the real ox functions
@@ -1085,6 +1140,20 @@ AddEventHandler('Jobs:Server:JobUpdate', function(source)
         groups[v.Id] = v.Grade and v.Grade.Level or 0
     end
     inv.player.groups = groups
+end)
+
+-- ammo item use: client fires this directly, bypassing ox's currentWeapon gate
+RegisterNetEvent('ox_inventory:bridge:useAmmo', function(slot, itemName, metadata)
+    local source = source
+    local itemDef = Items(itemName)
+    if not itemDef or not itemDef.server or itemDef.server.mythicType ~= 9 then return end
+    local success = lib.callback.await('ox_inventory:bridge:addAmmo', source, {
+        ammoType   = itemDef.server.ammoType,
+        bulletCount = itemDef.server.bulletCount or 10,
+    })
+    if success then
+        Inventory.RemoveItem(Inventory(source), itemName, 1, metadata, slot)
+    end
 end)
 
 RegisterNetEvent('ox_inventory:bridge:openShop', function(shopId)

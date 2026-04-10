@@ -28,14 +28,24 @@ local function ConvertItem(item)
         staticMetadata = item.staticMetadata or nil,
     }
 
-    if item.type == 2 and item.weapon then
-        data.weapon = true
-        data.model  = item.weapon
+    -- type 2: weapons — routed through server.UseItem → Weapons:Client:Use, NOT ox native weapon system
+    -- type 9: ammo — routed through server.UseItem → lib.callback addAmmo, NOT ox native ammo system
+    if item.type == 2 and item.ammoType then
+        -- ammoname → individual bullet item so unloading gives single bullets, not whole boxes
+        local bulletMap = {
+            AMMO_PISTOL  = 'bullet_pistol',
+            AMMO_SMG     = 'bullet_smg',
+            AMMO_RIFLE   = 'bullet_rifle',
+            AMMO_SHOTGUN = 'bullet_shotgun',
+            AMMO_SNIPER  = 'bullet_sniper',
+            AMMO_STUNGUN = 'bullet_stungun',
+        }
+        data.ammoname = bulletMap[item.ammoType]
     end
-
     if item.type == 9 then
-        data.ammo  = true
         data.stack = true
+        data.server.ammoType   = item.ammoType or nil
+        data.server.bulletCount = item.bulletCount or nil
     end
     -- auto-set durability flag for degrading items
     if not data.durability then
@@ -101,6 +111,7 @@ for _, item in ipairs(allItems) do
     local converted = ConvertItem(item)
     if converted then
         local storeKey = (item.name:sub(1, 7):lower() == 'weapon_') and item.name or item.name:lower()
+        converted.name = storeKey  -- slot stores item.name; must match the key so ItemList[slot.name] works
         ItemList[storeKey] = converted
         itemCount = itemCount + 1
     end
@@ -108,7 +119,79 @@ for _, item in ipairs(allItems) do
         registerConsumableUse(item)
         callbackCount = callbackCount + 1
     end
+    -- bullet items: use = load into compatible hotbar weapon, fallback to pack
+    if item.type == 1 and item.packInto and item.packCount then
+        local packInto  = item.packInto:lower()
+        local packCount = item.packCount
+        local itemName  = item.name:lower()
+        Inventory.Items:RegisterUse(itemName, 'BulletUse', function(source, slotData)
+            local inventory = Inventory(source)
+            if not inventory then return end
+            -- find compatible weapons in hotbar slots 1-5
+            local compatWeapons = {}
+            for slot = 1, 5 do
+                local s = inventory.items[slot]
+                if s and s.name then
+                    local def = Items(s.name)
+                    if def and def.ammoname == itemName then
+                        compatWeapons[#compatWeapons + 1] = {
+                            slot        = slot,
+                            name        = s.name,
+                            label       = def.label or s.name,
+                            currentAmmo = (s.metadata and s.metadata.ammo) or 0,
+                        }
+                    end
+                end
+            end
+            local haveCount = exports['ox_inventory']:Search(source, 'count', itemName) or 0
+            if #compatWeapons == 0 then
+                -- no compatible weapon in hotbar — try pack instead
+                if haveCount >= packCount then
+                    exports['ox_inventory']:RemoveItem(source, itemName, packCount)
+                    exports['ox_inventory']:AddItem(source, packInto, 1)
+                    TriggerClientEvent('mythic-notify:client:SendAlert', source, {
+                        type = 'success',
+                        message = ('Packed %d bullets into 1x %s'):format(packCount, packInto)
+                    })
+                else
+                    TriggerClientEvent('mythic-notify:client:SendAlert', source, {
+                        type = 'error',
+                        message = 'No compatible weapon in hotbar (slots 1-5)'
+                    })
+                end
+                return
+            end
+            -- send weapon list to client for menu + count input
+            TriggerClientEvent('Inventory:Client:LoadBullets', source, {
+                itemName  = itemName,
+                packInto  = packInto,
+                packCount = packCount,
+                haveCount = haveCount,
+                weapons   = compatWeapons,
+            })
+        end)
+        callbackCount = callbackCount + 1
+    end
 end
+
+-- player chose how many bullets to load into a weapon slot
+RegisterServerEvent('Inventory:Server:LoadBullets', function(weaponSlot, bulletItemName, count)
+    local source    = source
+    local inventory = Inventory(source)
+    if not inventory then return end
+    local have = exports['ox_inventory']:Search(source, 'count', bulletItemName) or 0
+    count = math.min(math.floor(count), have)
+    if count < 1 then return end
+    exports['ox_inventory']:RemoveItem(source, bulletItemName, count)
+    -- update weapon metadata so ammo persists
+    local weapSlot = inventory.items[weaponSlot]
+    if weapSlot and weapSlot.metadata then
+        weapSlot.metadata.ammo = (weapSlot.metadata.ammo or 0) + count
+        inventory:syncSlotsWithPlayer({ { item = weapSlot } }, inventory.weight)
+    end
+    -- if weapon is currently equipped on client, add bullets to ped live
+    TriggerClientEvent('Inventory:Client:BulletsLoaded', source, weaponSlot, count)
+end)
 
 AddEventHandler('Crafting:Client:OpenCrafting', function(ent, data)
     exports['ox_inventory']:openInventory('crafting', { id = data.id, index = 1 })

@@ -7,19 +7,284 @@
 -- our Check.Player.HasItem calls Search() export which is probably fine latency-wise
 -- but if something is checking items every frame it will be slow as hell
 -- FIXIT: listen to Inventory:Client:Cache and cache locally, swap Check.Player.* to use cache
---
--- TODO: item use progress bar (Inventory:ItemUse client callback) not bridged
--- mythic-inventory server sends this to client with pbConfig before firing server.UseItem
--- client runs the progress bar, returns success/cancelled back to server
--- ox has its own item use system, so this whole round-trip doesnt happen our way
--- most items will just fire instantly without the animation which looks jank
--- FIXIT: when server.UseItem fires, check itemDef for pbConfig and trigger ox progress bar manually
 
--- ============================================================
--- Stubs defined first so load-time RegisterComponent calls work
--- ============================================================
 
-local WeaponsStub = {}
+-- Mythic Weapons bridge
+-- Ports mythic-inventory weapon equip/unequip with draw anims,
+-- ammo tracking in metadata, and ammo item type-checking
+
+local _weapItemDefs = {}
+do
+    local _all = lib.load('data.mythic-items.index') or {}
+    for _, item in ipairs(_all) do
+        if item.name then _weapItemDefs[item.name] = item end
+    end
+end
+
+local _equipped     = nil   -- { Name, Slot, Count, MetaData, Owner, invType }
+local _equippedData = nil   -- mythic item definition
+local _weapLoggedIn = false
+
+local function _loadAnimDict(dict)
+    while not HasAnimDictLoaded(dict) do RequestAnimDict(dict) Wait(5) end
+end
+
+local function _doHolsterBlockers()
+    CreateThread(function()
+        while LocalPlayer.state.holstering do
+            DisablePlayerFiring(PlayerPedId(), true)
+            for _, c in ipairs({ 14,15,16,17,24,25,50,68,91,99,115,142 }) do
+                DisableControlAction(0, c, true)
+            end
+            Wait(0)
+        end
+    end)
+end
+
+local _wAnims = {
+    Cop = {
+        Holster = function(ped)
+            LocalPlayer.state:set('holstering', true, false)
+            _doHolsterBlockers()
+            local dict = 'reaction@intimidation@cop@unarmed'
+            _loadAnimDict(dict)
+            TaskPlayAnim(ped, dict, 'intro', 10.0, 2.3, -1, 49, 1, 0, 0, 0)
+            Wait(600)
+            SetCurrentPedWeapon(ped, GetHashKey('WEAPON_UNARMED'), true)
+            RemoveAllPedWeapons(ped)
+            ClearPedTasks(ped)
+            LocalPlayer.state:set('holstering', false, false)
+        end,
+        Draw = function(ped, hash, ammoHash, ammo, clip, item, itemData)
+            LocalPlayer.state:set('holstering', true, false)
+            _doHolsterBlockers()
+            RemoveAllPedWeapons(ped)
+            local dict = 'reaction@intimidation@cop@unarmed'
+            _loadAnimDict(dict)
+            TaskPlayAnim(ped, dict, 'intro', 10.0, 2.3, -1, 49, 1, 0, 0, 0)
+            Wait(600)
+            SetPedAmmoToDrop(ped, 0)
+            local actualClip = clip or GetWeaponClipSize(hash)
+            local actualReserve = itemData.isThrowable and (item.Count or 1) or (ammo or 0)
+            _ghostBullet = (actualClip == 0 and actualReserve == 0)
+            -- give at least 1 clip bullet so GTA keeps the weapon in hand when ammo=0
+            GiveWeaponToPed(ped, hash, math.max(1, actualClip), true, true)
+            SetPedAmmoByType(ped, ammoHash, actualReserve)
+            if item.MetaData and item.MetaData.WeaponTint then SetPedWeaponTintIndex(ped, hash, item.MetaData.WeaponTint) end
+            if item.MetaData and item.MetaData.WeaponComponents then
+                for _, v in pairs(item.MetaData.WeaponComponents) do GiveWeaponComponentToPed(ped, hash, GetHashKey(v.attachment)) end
+            end
+            SetCurrentPedWeapon(ped, hash, 1)
+            -- only restore clip if > 0; restoring to 0 makes GTA auto-switch to unarmed
+            if actualClip > 0 then SetAmmoInClip(ped, hash, actualClip) end
+            ClearPedTasks(ped)
+            LocalPlayer.state:set('holstering', false, false)
+        end,
+    },
+    Holster = {
+        OH = function(ped)
+            LocalPlayer.state:set('holstering', true, false)
+            _doHolsterBlockers()
+            local dict, anim = 'reaction@intimidation@1h', 'outro'
+            local dur = GetAnimDuration(dict, anim) * 1000
+            _loadAnimDict(dict)
+            TaskPlayAnim(ped, dict, anim, 1.0, 1.0, -1, 50, 0, 0, 0, 0)
+            Wait(dur - 2200)
+            SetCurrentPedWeapon(ped, GetHashKey('WEAPON_UNARMED'), true)
+            Wait(300)
+            RemoveAllPedWeapons(ped)
+            ClearPedTasks(ped)
+            Wait(800)
+            LocalPlayer.state:set('holstering', false, false)
+        end,
+    },
+    Draw = {
+        OH = function(ped, hash, ammoHash, ammo, clip, item, itemData)
+            LocalPlayer.state:set('holstering', true, false)
+            _doHolsterBlockers()
+            local dict, anim = 'reaction@intimidation@1h', 'intro'
+            RemoveAllPedWeapons(ped)
+            local dur = GetAnimDuration(dict, anim) * 1000
+            _loadAnimDict(dict)
+            TaskPlayAnim(ped, dict, anim, 1.0, 1.0, -1, 50, 0, 0, 0, 0)
+            Wait(900)
+            SetPedAmmoToDrop(ped, 0)
+            local actualClip = clip or GetWeaponClipSize(hash)
+            local actualReserve = itemData.isThrowable and (item.Count or 1) or (ammo or 0)
+            _ghostBullet = (actualClip == 0 and actualReserve == 0)
+            -- give at least 1 clip bullet so GTA keeps the weapon in hand when ammo=0
+            GiveWeaponToPed(ped, hash, math.max(1, actualClip), true, true)
+            SetPedAmmoByType(ped, ammoHash, actualReserve)
+            if item.MetaData and item.MetaData.WeaponTint then SetPedWeaponTintIndex(ped, hash, item.MetaData.WeaponTint) end
+            if item.MetaData and item.MetaData.WeaponComponents then
+                for _, v in pairs(item.MetaData.WeaponComponents) do GiveWeaponComponentToPed(ped, hash, GetHashKey(v.attachment)) end
+            end
+            SetCurrentPedWeapon(ped, hash, 1)
+            -- only restore clip if > 0; restoring to 0 makes GTA auto-switch to unarmed
+            if actualClip > 0 then SetAmmoInClip(ped, hash, actualClip) end
+            Wait(500)
+            ClearPedTasks(ped)
+            Wait(1200)
+            LocalPlayer.state:set('holstering', false, false)
+        end,
+    },
+}
+
+-- true when we gave a ghost bullet to hold a 0-ammo weapon in hand
+-- must be zeroed before _updateAmmo reads clip so we don't save the phantom round
+local _ghostBullet = false
+
+local function _updateAmmo(item, isDiff)
+    if not item then return end
+    local itemData = _weapItemDefs[item.Name]
+    if not itemData or itemData.isThrowable then return end
+    local ped = PlayerPedId()
+    local _, wep = GetCurrentPedWeapon(ped, true)
+    local hash = GetHashKey(itemData.weapon or item.Name)
+    if hash ~= wep then return end
+    local _, clip = GetAmmoInClip(ped, hash)
+    local ammo = GetAmmoInPedWeapon(ped, hash)
+    if ammo == (item.MetaData.ammo or 0) and clip == (item.MetaData.clip or 0) then return end
+    -- update local cache so next comparison uses current values
+    item.MetaData.ammo = ammo
+    item.MetaData.clip = clip
+    if isDiff then
+        TriggerServerEvent('Weapon:Server:UpdateAmmoDiff', item.Slot, ammo, clip)
+    else
+        TriggerServerEvent('Weapon:Server:UpdateAmmo', item.Slot, ammo, clip)
+    end
+end
+
+local function _runWeaponThreads()
+    CreateThread(function()
+        while _equipped ~= nil and _weapLoggedIn do
+            _updateAmmo(_equipped)
+            Wait(20000)
+        end
+    end)
+end
+
+WEAPONS = {
+    GetEquippedHash = function(self)
+        if not _equipped then return nil end
+        local d = _weapItemDefs[_equipped.Name]
+        return GetHashKey(d and d.weapon or _equipped.Name)
+    end,
+    GetEquippedItem = function(self) return _equipped end,
+    IsEligible = function(self) return true end,
+
+    Equip = function(self, item)
+        local ped = PlayerPedId()
+        local itemData = _weapItemDefs[item.Name]
+        if not itemData then return end
+        local hash = GetHashKey(itemData.weapon or item.Name)
+        local ammoHash = GetHashKey(itemData.ammoType or 'AMMO_PISTOL')
+        local meta = item.MetaData or {}
+        if _equipped then WEAPONS:Unequip(_equipped) end
+        -- pre-register BEFORE the animation so the mismatch checker (200ms tick)
+        -- doesn't disarm us between SetCurrentPedWeapon and the end of Equip
+        client.ignoreweapons[hash] = true
+        if LocalPlayer.state.onDuty == 'police' then
+            _wAnims.Cop.Draw(ped, hash, ammoHash, meta.ammo or 0, meta.clip or 0, item, itemData)
+        else
+            _wAnims.Draw.OH(ped, hash, ammoHash, meta.ammo or 0, meta.clip or 0, item, itemData)
+        end
+        _equipped = item
+        _equippedData = itemData
+        TriggerEvent('Weapons:Client:SwitchedWeapon', item.Name, item, itemData)
+        SetWeaponsNoAutoswap(true)
+        _runWeaponThreads()
+    end,
+
+    Unequip = function(self, item, diff)
+        if not item then return end
+        local ped = PlayerPedId()
+        local itemData = _weapItemDefs[item.Name]
+        if not itemData then return end
+        local hash = GetHashKey(itemData.weapon or item.Name)
+        -- zero out ghost bullet before reading ammo so we don't save phantom round
+        if _ghostBullet then
+            SetAmmoInClip(ped, hash, 0)
+            _ghostBullet = false
+        end
+        _updateAmmo(item, diff)
+        if LocalPlayer.state.onDuty == 'police' then
+            _wAnims.Cop.Holster(ped)
+        else
+            _wAnims.Holster.OH(ped)
+        end
+        SetPedAmmoByType(ped, GetHashKey(itemData.ammoType or 'AMMO_PISTOL'), 0)
+        if item.MetaData and item.MetaData.WeaponComponents then
+            for _, v in pairs(item.MetaData.WeaponComponents) do
+                RemoveWeaponComponentFromPed(ped, hash, GetHashKey(v.attachment))
+            end
+        end
+        -- stop ignoring this hash — weapon is holstered
+        client.ignoreweapons[hash] = nil
+        _equipped = nil
+        _equippedData = nil
+        TriggerEvent('Weapons:Client:SwitchedWeapon', false)
+    end,
+
+    UnequipIfEquipped = function(self)
+        if _equipped then WEAPONS:Unequip(_equipped) end
+    end,
+
+    UnequipIfEquippedNoAnim = function(self)
+        if not _equipped then return end
+        local ped = PlayerPedId()
+        local itemData = _weapItemDefs[_equipped.Name]
+        if itemData then
+            local hash = GetHashKey(itemData.weapon or _equipped.Name)
+            if _ghostBullet then SetAmmoInClip(ped, hash, 0); _ghostBullet = false end
+            _updateAmmo(_equipped)
+            SetPedAmmoByType(ped, GetHashKey(itemData.ammoType or 'AMMO_PISTOL'), 0)
+            client.ignoreweapons[hash] = nil
+        end
+        SetCurrentPedWeapon(ped, GetHashKey('WEAPON_UNARMED'), true)
+        RemoveAllPedWeapons(ped)
+        _equipped = nil
+        _equippedData = nil
+        TriggerEvent('Weapons:Client:SwitchedWeapon', false)
+    end,
+
+    Ammo = {
+        Add = function(self, data)
+            if not _equipped then return end
+            local itemData = _weapItemDefs[_equipped.Name]
+            if not itemData then return end
+            local ped = PlayerPedId()
+            local ammoHash = GetHashKey(itemData.ammoType or 'AMMO_PISTOL')
+            local count = data.bulletCount or 10
+            SetPedAmmoByType(ped, ammoHash, GetPedAmmoByType(ped, ammoHash) + count)
+            _ghostBullet = false
+        end,
+    },
+}
+
+-- ammo item use: check weapon equipped + ammo type match, add bullets
+lib.callback.register('ox_inventory:bridge:addAmmo', function(ammoData)
+    if not _equipped then
+        local N = exports['mythic-base']:FetchComponent('Notification')
+        if N then N:Error('No Weapon Equipped') end
+        return false
+    end
+    local itemData = _weapItemDefs[_equipped.Name]
+    if not itemData or itemData.ammoType ~= ammoData.ammoType then
+        local N = exports['mythic-base']:FetchComponent('Notification')
+        if N then N:Error('Wrong Ammo Type') end
+        return false
+    end
+    local ped = PlayerPedId()
+    local ammoHash = GetHashKey(itemData.ammoType or 'AMMO_PISTOL')
+    local count = ammoData.bulletCount or 10
+    SetPedAmmoByType(ped, ammoHash, GetPedAmmoByType(ped, ammoHash) + count)
+    _ghostBullet = false
+    if _equipped.MetaData then
+        _equipped.MetaData.ammo = (_equipped.MetaData.ammo or 0) + count
+    end
+    return true
+end)
 
 _polyShopRestrictions = {
     ['armory:police'] = 'police',
@@ -30,21 +295,6 @@ _polyShopTypes = {
     [27] = 'armory:police',
     [37] = 'armory:doc',
 }
-
-WeaponsStub.GetEquippedItem = function(self)
-    return nil
-end
-
-WeaponsStub.GetEquippedHash = function(self)
-    return nil
-end
-
-WeaponsStub.UnequipIfEquippedNoAnim = function(self)
-    local weapon = GetSelectedPedWeapon(PlayerPedId())
-    if weapon and weapon ~= `WEAPON_UNARMED` then
-        SetCurrentPedWeapon(PlayerPedId(), `WEAPON_UNARMED`, true)
-    end
-end
 
 local CraftingStub = {
     RegisterBench = function() end,
@@ -194,9 +444,8 @@ AddEventHandler('Crafting:Client:OpenCrafting', function(ent, data)
 end)
 
 
--- Register stubs immediately at load time — other resources fetch these
--- during their RegisterReady handlers which fire after ox_inventory loads
-exports['mythic-base']:RegisterComponent('Weapons', WeaponsStub)
+-- Register immediately at load time — other resources fetch these during their RegisterReady handlers
+exports['mythic-base']:RegisterComponent('Weapons', WEAPONS)
 exports['mythic-base']:RegisterComponent('Crafting', CraftingStub)
 
 -- ============================================================
@@ -322,23 +571,27 @@ AddEventHandler('Proxy:Shared:RegisterReady', function()
     end
 end)
 
--- force close when logging out
+-- force close when logging out, save weapon ammo
 AddEventHandler('Characters:Client:Logout', function()
     exports['ox_inventory']:closeInventory()
+    if _equipped then WEAPONS:UnequipIfEquippedNoAnim() end
+    _weapLoggedIn = false
 end)
 
--- enable everything on spawn, also fires ItemsLoaded so mythic-laptop can init its item list
+-- enable everything on spawn
 AddEventHandler('Characters:Client:Spawned', function()
+    _weapLoggedIn = true
     LocalPlayer.state:set('invBusy', false, true)
     LocalPlayer.state:set('invHotKeys', true, false)
     LocalPlayer.state:set('canUseWeapons', true, false)
     TriggerEvent('Inventory:Client:ItemsLoaded')
 end)
 
--- disable weapons on death
+-- disable weapons on death, save ammo state
 AddEventHandler('Ped:Client:Died', function()
     exports['ox_inventory']:closeInventory()
     LocalPlayer.state:set('canUseWeapons', false, false)
+    if _equipped then WEAPONS:UnequipIfEquippedNoAnim() end
 end)
 
 -- old mythic open request, just pass it through
@@ -396,16 +649,96 @@ RegisterNetEvent('Inventory:Client:Changed', function(data)
     end
 end)
 
--- weapon equip/unequip from mythic weapon system
+-- weapon equip/unequip toggle from server
 RegisterNetEvent('Weapons:Client:Use', function(data)
-    if data == nil or data.slot == nil then
-        TriggerEvent('ox_inventory:disarm', false)
+    if not data then return end
+    print(('[WEAP] Use: data.Slot=%s | _equipped=%s _equipped.Slot=%s'):format(
+        tostring(data and data.Slot),
+        tostring(_equipped and _equipped.Name),
+        tostring(_equipped and _equipped.Slot)
+    ))
+    if _equipped and _equipped.Slot == data.Slot then
+        print('[WEAP] -> UNEQUIP')
+        WEAPONS:Unequip(data)
+    else
+        print('[WEAP] -> EQUIP (equipped slot mismatch or nil)')
+        WEAPONS:Equip(data)
     end
 end)
 
--- force unequip on arrest, death etc
+-- force unequip (arrest, disarm, admin, etc.)
 RegisterNetEvent('Weapons:Client:ForceUnequip', function()
+    if _equipped then WEAPONS:UnequipIfEquippedNoAnim() end
     TriggerEvent('ox_inventory:disarm', true)
+end)
+
+-- server updated ammo count in our slot (e.g. after confiscation)
+RegisterNetEvent('Weapons:Client:UpdateCount', function(slot, count)
+    if _equipped and _equipped.Slot == slot then
+        local itemData = _weapItemDefs[_equipped.Name]
+        if itemData then SetPedAmmoByType(PlayerPedId(), GetHashKey(itemData.ammoType or 'AMMO_PISTOL'), count) end
+    end
+end)
+
+RegisterNetEvent('Weapons:Client:UpdateAttachments', function(components)
+    if not _equipped then return end
+    local itemData = _weapItemDefs[_equipped.Name]
+    local hash = GetHashKey(itemData and itemData.weapon or _equipped.Name)
+    local ped = PlayerPedId()
+    for k, v in pairs(_equipped.MetaData and _equipped.MetaData.WeaponComponents or {}) do
+        if not components[k] then RemoveWeaponComponentFromPed(ped, hash, GetHashKey(v.attachment)) end
+    end
+    for k, v in pairs(components) do
+        GiveWeaponComponentToPed(ped, hash, GetHashKey(v.attachment))
+    end
+    if _equipped.MetaData then _equipped.MetaData.WeaponComponents = components end
+end)
+
+-- bullet loading: server found compatible weapons, show weapon picker + count input
+RegisterNetEvent('Inventory:Client:LoadBullets', function(data)
+    local function loadInto(weapon)
+        local input = lib.inputDialog(('Load into %s'):format(weapon.label), {
+            {
+                type    = 'number',
+                label   = ('Bullets to load (have %d)'):format(data.haveCount),
+                default = data.haveCount,
+                min     = 1,
+                max     = data.haveCount,
+            }
+        })
+        if not input or not input[1] then return end
+        local count = math.floor(tonumber(input[1]) or 0)
+        if count < 1 then return end
+        TriggerServerEvent('Inventory:Server:LoadBullets', weapon.slot, data.itemName, count)
+    end
+
+    if #data.weapons == 1 then
+        loadInto(data.weapons[1])
+    else
+        local options = {}
+        for _, w in ipairs(data.weapons) do
+            local weapon = w
+            options[#options + 1] = {
+                title       = ('Slot %d — %s'):format(weapon.slot, weapon.label),
+                description = ('Reserve: %d bullets'):format(weapon.currentAmmo),
+                onSelect    = function() loadInto(weapon) end,
+            }
+        end
+        lib.registerContext({ id = 'bullet_load_pick', title = 'Load Bullets — Pick Weapon', options = options })
+        lib.showContext('bullet_load_pick')
+    end
+end)
+
+-- server confirmed load — add bullets to ped if this weapon is equipped
+RegisterNetEvent('Inventory:Client:BulletsLoaded', function(weaponSlot, count)
+    if not _equipped or _equipped.Slot ~= weaponSlot then return end
+    local itemData = _equippedData
+    if not itemData then return end
+    local ped = PlayerPedId()
+    local ammoHash = GetHashKey(itemData.ammoType or 'AMMO_PISTOL')
+    SetPedAmmoByType(ped, ammoHash, GetPedAmmoByType(ped, ammoHash) + count)
+    _ghostBullet = false
+    _equipped.MetaData.ammo = (_equipped.MetaData.ammo or 0) + count
 end)
 
 -- prevents using items while already mid-use
@@ -418,6 +751,7 @@ AddStateBagChangeHandler('isCuffed', ('player:%s'):format(cache.serverId), funct
     LocalPlayer.state:set('invBusy', value or false, false)
     if value then
         exports['ox_inventory']:closeInventory()
+        if _equipped then WEAPONS:UnequipIfEquippedNoAnim() end
         TriggerEvent('ox_inventory:disarm', true)
     end
 end)
@@ -427,6 +761,7 @@ AddStateBagChangeHandler('isDead', ('player:%s'):format(cache.serverId), functio
     LocalPlayer.state:set('invBusy', value or false, false)
     if value then
         exports['ox_inventory']:closeInventory()
+        if _equipped then WEAPONS:UnequipIfEquippedNoAnim() end
         TriggerEvent('ox_inventory:disarm', true)
     end
 end)
@@ -441,17 +776,32 @@ local allItems = lib.load('data.mythic-items.index')
 if allItems then
     local count = 0
     for _, item in ipairs(allItems) do
-        if item.name and not ClientItems[item.name] then
-            ClientItems[item.name] = {
-                name = item.name,
-                label = item.label or item.name,
-                description = item.description or nil,
-                weight = item.weight or 0,
-                stack = item.isStackable ~= false and (item.isStackable or true),
-                close = item.closeUi or true,
-                count = 0,
-            }
-            count = count + 1
+        if item.name then
+            -- normalize key same as server: weapons stay uppercase, everything else lowercase
+            local storeKey = (item.name:sub(1, 7):lower() == 'weapon_') and item.name or item.name:lower()
+            -- type 2 (weapons) and type 9 (ammo) must always overwrite ox's data/weapons.lua entries
+            -- ox sets weapon=true/ammo=true on those which hijacks useSlot into native paths
+            local forceOverwrite = item.type == 2 or item.type == 9
+            if forceOverwrite or not ClientItems[storeKey] then
+                local entry = {
+                    name = storeKey,  -- must match slot.name so Items[slot.name] resolves
+                    label = item.label or item.name,
+                    description = item.description or nil,
+                    weight = item.weight or 0,
+                    stack = item.isStackable ~= false and (item.isStackable or true),
+                    close = item.closeUi or true,
+                    count = 0,
+                }
+                -- type 9 ammo: export path bypasses the currentWeapon gate in useSlot
+                if item.type == 9 then
+                    entry.client = {}
+                    entry.export = function(itemData, slotData)
+                        TriggerServerEvent('ox_inventory:bridge:useAmmo', slotData.slot, slotData.name, slotData.metadata)
+                    end
+                end
+                ClientItems[storeKey] = entry
+                count = count + 1
+            end
         end
     end
     print(string.format('^2[mythic-ox-bridge] registered %d items client-side^0', count))
