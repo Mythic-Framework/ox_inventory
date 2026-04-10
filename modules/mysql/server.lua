@@ -112,8 +112,8 @@ function db.loadPlayer(identifier)
 end
 
 function db.savePlayer(owner, inventory)
-    if shared.framework == 'mythic' then 
-        return MySQL.prepare(Query.UPSERT_STASH, { inventory, tostring(owner), 'inventory'})
+    if shared.framework == 'mythic' then
+        return MySQL.prepare.await(Query.UPSERT_STASH, { inventory, tostring(owner), 'inventory' })
     end
     return MySQL.prepare(Query.UPDATE_PLAYER, { inventory, owner })
 end
@@ -195,7 +195,15 @@ function db.saveInventories(players, trunks, gloveboxes, stashes, total)
         pending += 1
 
         Citizen.CreateThreadNow(function()
-            local resp = safeQuery(MySQL.prepare.await, Query.UPDATE_PLAYER, players)
+            local resp
+            if shared.framework == 'mythic' then
+                -- players[i] = { data, owner } — remap to UPSERT_STASH format { data, owner, 'inventory' }
+                local remapped = {}
+                for i = 1, total[1] do remapped[i] = { players[i][1], tostring(players[i][2]), 'inventory' } end
+                resp = safeQuery(MySQL.prepare.await, Query.UPSERT_STASH, remapped)
+            else
+                resp = safeQuery(MySQL.prepare.await, Query.UPDATE_PLAYER, players)
+            end
             pending -= 1
 
             if resp then

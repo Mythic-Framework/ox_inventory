@@ -859,6 +859,9 @@ CraftingReal.StartCraft = function (self, ...) return false end
 CraftingReal.Craft = { Start = function() end, End = function() end, Cancel = function () end }
 CraftingReal.Schematics = { Has = function () return false end, Add = function() end }
 
+exports['mythic-base']:RegisterComponent('Inventory', Inventory)
+exports['mythic-base']:RegisterComponent('Crafting', CraftingReal)
+
 -- mythic lifecycle hooks
 AddEventHandler('Proxy:Shared:RegisterReady', function()
     local Middleware = exports['mythic-base']:FetchComponent('Middleware')
@@ -967,8 +970,6 @@ AddEventHandler('Proxy:Shared:RegisterReady', function()
         return true
     end, 5)
 
-    exports['mythic-base']:RegisterComponent('Inventory', Inventory)
-    exports['mythic-base']:RegisterComponent('Crafting', CraftingReal)
 end)
 
 -- ensure player_schematics table exists
