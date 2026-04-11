@@ -332,6 +332,8 @@ return {
 		metalic = true,
 		weight = 0.1,
 		isDestroyed = true,
+		vehicleBlock = true,
+		stressTicks = { "3", "3", "3", "3", "3", "3", "3", "3" },
 		animConfig = {
 			time = 15000,
 			pbConfig = {
@@ -349,7 +351,6 @@ return {
 				},
 			},
 		},
-		isDestroyed = true,
 		durability = (60 * 60 * 24 * 10),
 	},
 	{
@@ -366,6 +367,8 @@ return {
 		weight = 5.0,
 		isDestroyed = true,
 		durability = (60 * 60 * 24 * 10),
+		dispenseItem = "cigarette",
+		dispenseDefault = 20,
 		animConfig = {
 			time = 2000,
 			pbConfig = {
@@ -396,6 +399,7 @@ return {
 		weight = 8,
 		isDestroyed = true,
 		durability = (60 * 60 * 24 * 7),
+		armourValue = 50,
 		animConfig = {
 			anim = "adjust",
 			time = 5000,
@@ -427,6 +431,7 @@ return {
 		weight = 8,
 		isDestroyed = true,
 		durability = (60 * 60 * 24 * 7),
+		armourValue = 100,
 		animConfig = {
 			anim = "adjust",
 			time = 10000,
@@ -458,6 +463,7 @@ return {
 		weight = 8,
 		isDestroyed = true,
 		durability = (60 * 60 * 24 * 7),
+		armourValue = 100,
 		animConfig = {
 			anim = "adjust",
 			time = 7500,

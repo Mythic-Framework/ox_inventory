@@ -19,11 +19,15 @@ local function ConvertItem(item)
         decay       = item.isDestroyed or false,
         degrade     = item.durability and math.floor(item.durability / 60) or nil,
         server      = {
-            mythicType   = item.type,
-            mythicRarity = item.rarity,
-            state        = item.state,
-            isRemoved    = item.isRemoved or false,
-            animConfig = item.animConfig or nil,
+            mythicType    = item.type,
+            mythicRarity  = item.rarity,
+            state         = item.state,
+            isRemoved     = item.isRemoved or false,
+            animConfig    = item.animConfig or nil,
+            vehicleBlock  = item.vehicleBlock or nil,
+            armourValue   = item.armourValue or nil,
+            dispenseItem  = item.dispenseItem or nil,
+            drugState     = item.drugState or nil,
         },
         staticMetadata = item.staticMetadata or nil,
     }
@@ -60,13 +64,12 @@ end
 
 local function registerConsumableUse(item)
     Inventory.Items:RegisterUse(item.name, 'StatusConsumable', function(source, slotData)
-    -- use direct ox export so the numeric source hits the in memory player inventory
-    -- going through remove slot stringifies the source and thats no bueno :)
+        -- use direct ox export so the numeric source hits the in memory player inventory
         exports['ox_inventory']:RemoveItem(source, slotData.Name, 1, nil, slotData.Slot)
 
         if item.statusChange then
             if item.statusChange.Add then
-                for k,  v in pairs(item.statusChange.Add) do
+                for k, v in pairs(item.statusChange.Add) do
                     TriggerClientEvent('Status:Client:updateStatus', source, k, true, v)
                 end
             end
@@ -87,15 +90,39 @@ local function registerConsumableUse(item)
         if item.stressTicks then Player(source).state.stressTicks = item.stressTicks end
         if item.energyModifier then
             TriggerClientEvent('Inventory:Client:SpeedyBoi', source,
-            item.energyModifier.modifier,
-            item.energyModifier.duration * 1000,
-            item.energyModifier.cooldown * 1000,
-            item.energyModifier.skipScreenEffects)
+                item.energyModifier.modifier,
+                item.energyModifier.duration * 1000,
+                item.energyModifier.cooldown * 1000,
+                item.energyModifier.skipScreenEffects)
         end
         if item.progressModifier then
             TriggerClientEvent('Execute:Client:Component', source, 'Progress', 'Modifier',
-            item.progressModifier.modifier,
-            math.random(item.progressModifier.min, item.progressModifier.max) * 60000)
+                item.progressModifier.modifier,
+                math.random(item.progressModifier.min, item.progressModifier.max) * 60000)
+        end
+
+        -- direct armour set (armor/heavyarmor/pdarmor)
+        if item.armourValue then
+            SetPedArmour(GetPlayerPed(source), item.armourValue)
+        end
+
+        -- drug state storage (oxy, weed, etc.) — stored on character for mythic-drugs/police to read
+        if item.drugState then
+            local Fetch = exports['mythic-base']:FetchComponent('Fetch')
+            if Fetch then
+                local plyr = Fetch:Source(source)
+                if plyr then
+                    local char = plyr:GetData('Character')
+                    if char then
+                        local drugStates = char:GetData('DrugStates') or {}
+                        drugStates[item.drugState.type] = {
+                            item    = item.name,
+                            expires = os.time() + item.drugState.duration,
+                        }
+                        char:SetData('DrugStates', drugStates)
+                    end
+                end
+            end
         end
     end)
 end
@@ -115,8 +142,38 @@ for _, item in ipairs(allItems) do
         ItemList[storeKey] = converted
         itemCount = itemCount + 1
     end
-    if item.type == 1 and (item.statusChange or item.healthModifier or item.armourModifier or item.stressTicks or item.energyModifier) then
+    if item.type == 1 and (item.statusChange or item.healthModifier or item.armourModifier
+        or item.stressTicks or item.energyModifier or item.progressModifier
+        or item.armourValue or item.drugState) then
         registerConsumableUse(item)
+        callbackCount = callbackCount + 1
+    end
+    -- dispense-one-per-use items (e.g. cigarette_pack → gives 1 cigarette per use, tracked via metadata Count)
+    if item.type == 1 and item.dispenseItem then
+        local dispenseItemName = item.dispenseItem
+        local defaultCount     = item.dispenseDefault or 1
+        local iname            = item.name:lower()
+        Inventory.Items:RegisterUse(iname, 'Dispense', function(source, slotData)
+            local inv = Inventory(source)
+            if not inv then return end
+            local slot      = inv.items[slotData.Slot]
+            local remaining = (slot and slot.metadata and tonumber(slot.metadata.Count)) or defaultCount
+            if remaining > 0 then
+                Inventory.AddItem(inv, dispenseItemName, 1, {})
+                remaining = remaining - 1
+                if remaining <= 0 then
+                    Inventory.RemoveItem(inv, iname, 1, slot and slot.metadata or {}, slotData.Slot)
+                    TriggerClientEvent('mythic-notify:client:SendAlert', source, { type = 'info', message = ('No more %s in pack'):format(dispenseItemName) })
+                else
+                    local meta = table.clone(slot.metadata or {})
+                    meta.Count = remaining
+                    Inventory.SetMetadata(inv, slotData.Slot, meta)
+                end
+            else
+                Inventory.RemoveItem(inv, iname, 1, slot and slot.metadata or {}, slotData.Slot)
+                TriggerClientEvent('mythic-notify:client:SendAlert', source, { type = 'error', message = 'Pack is empty' })
+            end
+        end)
         callbackCount = callbackCount + 1
     end
     -- bullet items: use = load into compatible hotbar weapon, fallback to pack

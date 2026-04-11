@@ -358,6 +358,13 @@ Inventory.Items = {
 function server.UseItem(source, itemName, data)
     local itemDef = Items(itemName)
 
+    if itemDef and itemDef.server and itemDef.server.vehicleBlock then
+        if GetVehiclePedIsIn(GetPlayerPed(source)) ~= 0 then
+            TriggerClientEvent('mythic-notify:client:SendAlert', source, { type = 'error', message = 'Cannot use while in a vehicle' })
+            return
+        end
+    end
+
     -- mythic weapon (type 2): toggle equip/unequip on client via mythic system
     if itemDef and itemDef.server and itemDef.server.mythicType == 2 then
         TriggerClientEvent('Weapons:Client:Use', source, {
