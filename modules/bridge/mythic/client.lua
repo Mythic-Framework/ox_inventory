@@ -652,16 +652,9 @@ end)
 -- weapon equip/unequip toggle from server
 RegisterNetEvent('Weapons:Client:Use', function(data)
     if not data then return end
-    print(('[WEAP] Use: data.Slot=%s | _equipped=%s _equipped.Slot=%s'):format(
-        tostring(data and data.Slot),
-        tostring(_equipped and _equipped.Name),
-        tostring(_equipped and _equipped.Slot)
-    ))
     if _equipped and _equipped.Slot == data.Slot then
-        print('[WEAP] -> UNEQUIP')
         WEAPONS:Unequip(data)
     else
-        print('[WEAP] -> EQUIP (equipped slot mismatch or nil)')
         WEAPONS:Equip(data)
     end
 end)

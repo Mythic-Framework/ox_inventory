@@ -33,7 +33,6 @@ server_scripts {
 
 client_scripts {
     'init.lua',
-    'modules/bridge/mythic/client.lua',
 }
 
 ui_page 'web/build/index.html'
