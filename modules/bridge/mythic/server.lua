@@ -353,6 +353,55 @@ Inventory.Items = {
 
 }
 
+local function injectDefaultMeta(itemName, meta, inventoryOwner)
+    if type(meta) ~= 'table' then meta = {} end
+    local iname   = type(itemName) == 'string' and itemName:lower() or nil
+    if not iname then return meta end
+    local itemDef = Items(iname)
+    if not itemDef then return meta end
+    -- staticMetadata baked into the item definition
+    if itemDef.staticMetadata then
+        for k, v in pairs(itemDef.staticMetadata) do
+            if meta[k] == nil then meta[k] = v end
+        end
+    end
+    -- type-specific auto metadata
+    local mtype = itemDef.server and itemDef.server.mythicType or 0
+    if mtype == 2 and not meta.SerialNumber then
+        meta.SerialNumber = math.random(100000, 999999)
+    elseif mtype == 10 and not meta.Container then
+        meta.Container = ('container:%d%d'):format(os.time(), math.random(1000, 9999))
+    elseif mtype == 11 and not meta.Quality then
+        meta.Quality = math.random(100)
+    end
+    if iname == 'cigarette_pack' and not meta.Count then meta.Count = 30 end
+    -- character-data items — resolve source from inventory owner (SID or numeric source)
+    if (iname == 'govid' or iname == 'phone') and inventoryOwner then
+        local src = type(inventoryOwner) == 'number' and inventoryOwner or toSource(inventoryOwner)
+        if src then
+            local Fetch = exports['mythic-base']:FetchComponent('Fetch')
+            local plyr  = Fetch and Fetch:Source(src)
+            local char  = plyr and plyr:GetData('Character')
+            if char then
+                if iname == 'govid' then
+                    if not meta.Name       then meta.Name       = ('%s %s'):format(char:GetData('First') or '', char:GetData('Last') or '') end
+                    if not meta.Gender     then meta.Gender     = char:GetData('Gender') == 1 and 'Female' or 'Male' end
+                    if not meta.PassportID then meta.PassportID = char:GetData('User') end
+                    if not meta.StateID    then meta.StateID    = char:GetData('SID') end
+                    if not meta.DOB        then meta.DOB        = char:GetData('DOB') end
+                elseif iname == 'phone' then
+                    if not meta.PhoneNumber then meta.PhoneNumber = char:GetData('Phone') end
+                end
+            end
+        end
+    end
+    return meta
+end
+
+function BuildDefaultMeta(itemName, source)
+    return injectDefaultMeta(itemName, {}, source)
+end
+
 -- ox calls this when someone uses a non-weapon item with no consume set
 -- translates ox slot data back into the mythic item format that callbacks expect
 function server.UseItem(source, itemName, data)
@@ -462,29 +511,17 @@ local _origRemoveItem = Inventory.RemoveItem
 
 Inventory.AddItem = function(self, owner, name, count, metadata, invType)
     if type(self) == 'table' and self.slots then
-        return _origAddItem(self, owner, name, count, metadata, invType)
+        -- called as Inventory.AddItem(inventoryObj, itemName, count, metadata)
+        -- arg positions: owner=itemName, name=count, count=metadata
+        local injected = injectDefaultMeta(owner, count, self.owner)
+        return _origAddItem(self, owner, name, injected, metadata, invType)
     end
     local target = toTarget(owner, invType)
     if not target then
         print('^1[mythic-ox-bridge] AddItem: could not resolve owner ' .. tostring(owner) .. '^0')
         return false
     end
-    metadata = type(metadata) == 'table' and metadata or {}
-    local itemDef = Items(name:lower())
-    if itemDef and itemDef.staticMetadata then
-        for k, v in pairs(itemDef.staticMetadata) do
-            if metadata[k] == nil then metadata[k] = v end
-        end
-    end
-    -- auto-generate serial for weapons that don't already have one
-    local mtype = itemDef and itemDef.server and itemDef.server.mythicType or 0
-    if mtype == 2 and not metadata.SerialNumber then
-        metadata.SerialNumber = math.random(100000, 999999)
-    elseif mtype == 10 and not metadata.Container then
-        metadata.Container = ('container:%d%d'):format(os.time(), math.random(1000, 9999))
-    elseif mtype == 11 and not metadata.Quality then
-        metadata.Quality = math.random(100)
-    end
+    metadata = injectDefaultMeta(name, metadata, target)
     return _origAddItem(Inventory(target), name, count or 1, metadata)
 end
 
@@ -1045,39 +1082,8 @@ AddEventHandler('Proxy:Shared:RegisterReady', function()
                 { name = 'coffee',        count = 2 },
             }
 
-            local function buildStartMeta(itemName)
-                local itemDef = Items(itemName:lower())
-                local meta = {}
-                -- apply staticMetadata from item def
-                if itemDef and itemDef.staticMetadata then
-                    for k, v in pairs(itemDef.staticMetadata) do meta[k] = v end
-                end
-                local mtype = itemDef and itemDef.server and itemDef.server.mythicType or 0
-                if mtype == 2 and not meta.SerialNumber then
-                    meta.SerialNumber = math.random(100000, 999999)
-                elseif mtype == 10 and not meta.Container then
-                    meta.Container = ('container:%d%d'):format(os.time(), math.random(1000, 9999))
-                elseif mtype == 11 and not meta.Quality then
-                    meta.Quality = math.random(100)
-                end
-                -- items that need character data
-                if itemName == 'govid' then
-                    local genStr = char:GetData('Gender') == 1 and 'Female' or 'Male'
-                    meta.Name       = ('%s %s'):format(char:GetData('First') or '', char:GetData('Last') or '')
-                    meta.Gender     = genStr
-                    meta.PassportID = char:GetData('User')
-                    meta.StateID    = char:GetData('SID')
-                    meta.DOB        = char:GetData('DOB')
-                elseif itemName == 'phone' then
-                    meta.PhoneNumber = char:GetData('Phone')
-                elseif itemName == 'cigarette_pack' and not meta.Count then
-                    meta.Count = 30
-                end
-                return meta
-            end
-
             for slot, item in ipairs(startItems) do
-                exports['ox_inventory']:AddItem(source, item.name, item.count, buildStartMeta(item.name), slot)
+                exports['ox_inventory']:AddItem(source, item.name, item.count, BuildDefaultMeta(item.name, source), slot)
             end
         end
 

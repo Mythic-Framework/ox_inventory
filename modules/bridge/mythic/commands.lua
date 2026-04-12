@@ -33,7 +33,9 @@ AddEventHandler('Proxy:Shared:RegisterReady', function()
         local itemName = args[2]
         local count = tonumber(args[3]) or 1
         if not itemName then return end
-        exports['ox_inventory']:AddItem(targetSource, itemName, count)
+        -- build metadata so shit like phone, id etc can have it 
+        local meta = BuildDefaultMeta(itemName, targetSource)
+        exports['ox_inventory']:AddItem(targetSource, itemName, count, meta)
         TriggerClientEvent('mythic-notify:client:SendAlert', source, { type = 'success', message = ('Gave %dx %s to %s'):format(count, itemName, char:GetData('SID')) })
     end, {
         help = 'Give Item',
