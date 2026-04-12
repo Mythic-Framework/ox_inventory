@@ -1030,6 +1030,34 @@ CraftingReal.StartCraft = function (self, ...) return false end
 CraftingReal.Craft = { Start = function() end, End = function() end, Cancel = function () end }
 CraftingReal.Schematics = { Has = function () return false end, Add = function() end }
 
+-- admin menu / item browser support
+Inventory.GetItemsDatabase = function(self)
+    local itemList = Items()
+    local result   = {}
+    for name, item in pairs(itemList) do
+        result[#result + 1] = {
+            name        = item.name or name,
+            label       = item.label or name,
+            type        = item.server and item.server.mythicType or 0,
+            rarity      = item.server and item.server.mythicRarity or 0,
+            weight      = item.weight or 0,
+            price       = item.server and item.server.mythicPrice or 0,
+            isStackable = item.stack,
+            description = item.description or '',
+        }
+    end
+    return result
+end
+
+Inventory.DoesItemExist = function(self, itemName)
+    return Items(itemName) ~= nil
+end
+
+Inventory.GetItemType = function(self, itemName)
+    local item = Items(itemName)
+    return item and item.server and item.server.mythicType or nil
+end
+
 exports['mythic-base']:RegisterComponent('Inventory', Inventory)
 exports['mythic-base']:RegisterComponent('Crafting', CraftingReal)
 
@@ -1038,6 +1066,8 @@ AddEventHandler('Proxy:Shared:RegisterReady', function()
     local Middleware = exports['mythic-base']:FetchComponent('Middleware')
     local Fetch      = exports['mythic-base']:FetchComponent('Fetch')
     local Config     = exports['mythic-base']:FetchComponent('Config')
+    local Version    = exports['mythic-base']:FetchComponent('Version')
+    if Version then Version:Check('Mythic-Framework/Mythic-VersionCheckers', GetCurrentResourceName()) end
 
     local _newCharSources = {}
     Middleware:Add('Characters:Created', function(source)

@@ -21,6 +21,7 @@ local function ConvertItem(item)
         server      = {
             mythicType    = item.type,
             mythicRarity  = item.rarity,
+            mythicPrice   = item.price or 0,
             state         = item.state,
             isRemoved     = item.isRemoved or false,
             animConfig    = item.animConfig or nil,

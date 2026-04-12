@@ -5,9 +5,7 @@ require 'modules.crafting.server'
 require 'modules.shops.server'
 require 'modules.pefcl.server'
 
-if GetConvar('inventory:versioncheck', 'true') == 'true' then
-	lib.versionCheck('Mythic-Framework/ox_inventory')
-end
+-- version check handled by mythic-base Version component in bridge server.lua
 
 local TriggerEventHooks = require 'modules.hooks.server'
 local db = require 'modules.mysql.server'
