@@ -610,17 +610,57 @@ Inventory.SlotExists = function(self, owner, slotNum, invType)
 end
 
 Inventory.UpdateMetaData = function(self, owner, metadata, slotNum, invType)
-    local target = toTarget(owner, invType)
-    if not target then return end
-    local inv = Inventory(target)
+    local inv, resolvedSlot
+
+    -- toSlot() produces this id table; detect it so old callers keep working.
+    if type(owner) == 'table' and owner.slot then
+        local src = tonumber(owner.owner)
+        if not src then return end
+        inv = Inventory(src)
+        resolvedSlot = owner.slot
+        if inv and inv.items then
+            local slot = inv.items[resolvedSlot]
+            if not slot then return end
+            local meta = slot.metadata or {}
+            for k, v in pairs(metadata) do meta[k] = v end
+            Inventory.SetMetadata(inv, resolvedSlot, meta)
+        end
+        return
+    else
+        -- Standard format: UpdateMetaData(owner/sid, metadata, slotNum, invType)
+        local target = toTarget(owner, invType)
+        if not target then return end
+        inv = Inventory(target)
+        resolvedSlot = slotNum
+    end
+
     if not inv then return end
-    local slot = Inventory.GetSlot(inv, slotNum)
+    local slot = Inventory.GetSlot(inv, resolvedSlot)
     if not slot then return end
     local meta = slot.metadata or {}
     for k, v in pairs(metadata) do
         meta[k] = v
     end
-    Inventory.SetMetadata(inv, slotNum, meta)
+    Inventory.SetMetadata(inv, resolvedSlot, meta)
+end
+
+Inventory.GetInventory = function(self, source, sid, invType)
+    invType = invType or 1
+    local inv
+    if invType == 1 then
+        inv = Inventory(source)
+    else
+        local target = toTarget(source, invType)
+        inv = target and Inventory(target)
+    end
+    if not inv or not inv.items then return {} end
+    local result = {}
+    for _, slot in pairs(inv.items) do
+        if slot and slot.name then
+            result[#result + 1] = toSlot(slot, source, invType)
+        end
+    end
+    return result
 end
 
 -- mythic-admin expects name/label/type/rarity/weight/price/isStackable/description
