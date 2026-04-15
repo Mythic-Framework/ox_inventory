@@ -427,15 +427,15 @@ function server.UseItem(source, itemName, data)
         return
     end
 
-    -- mythic ammo (type 9): ask client if weapon accepts this ammo, remove only on success
+    -- mythic ammo (type 9): send to client for progress bar + ammo add, remove on AmmoLoaded
     if itemDef and itemDef.server and itemDef.server.mythicType == 9 then
-        local success = lib.callback.await('ox_inventory:bridge:addAmmo', source, {
-            ammoType   = itemDef.server.ammoType,
+        TriggerClientEvent('Inventory:Client:AmmoLoad', source, {
+            ammoType    = itemDef.server.ammoType,
             bulletCount = itemDef.server.bulletCount or 10,
+            itemName    = itemName,
+            itemSlot    = data.slot,
+            itemMeta    = data.metadata,
         })
-        if success then
-            Inventory.RemoveItem(Inventory(source), itemName, 1, data.metadata, data.slot)
-        end
         return
     end
 
@@ -472,6 +472,12 @@ function server.UseItem(source, itemName, data)
         end
     end
 end
+
+-- client confirmed ammo loaded after progress bar — remove the ammo box
+RegisterServerEvent('Inventory:Server:AmmoLoaded', function(itemName, itemSlot, itemMeta)
+    local source = source
+    Inventory.RemoveItem(Inventory(source), itemName, 1, itemMeta, itemSlot)
+end)
 
 -- client saves weapon ammo into item metadata when unequipping or on timer
 RegisterServerEvent('Weapon:Server:UpdateAmmo', function(slot, ammo, clip)
@@ -1268,13 +1274,13 @@ RegisterNetEvent('ox_inventory:bridge:useAmmo', function(slot, itemName, metadat
     local source = source
     local itemDef = Items(itemName)
     if not itemDef or not itemDef.server or itemDef.server.mythicType ~= 9 then return end
-    local success = lib.callback.await('ox_inventory:bridge:addAmmo', source, {
-        ammoType   = itemDef.server.ammoType,
+    TriggerClientEvent('Inventory:Client:AmmoLoad', source, {
+        ammoType    = itemDef.server.ammoType,
         bulletCount = itemDef.server.bulletCount or 10,
+        itemName    = itemName,
+        itemSlot    = slot,
+        itemMeta    = metadata,
     })
-    if success then
-        Inventory.RemoveItem(Inventory(source), itemName, 1, metadata, slot)
-    end
 end)
 
 RegisterNetEvent('ox_inventory:bridge:openShop', function(shopId)

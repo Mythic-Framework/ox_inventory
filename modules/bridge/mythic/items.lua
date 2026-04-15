@@ -34,7 +34,7 @@ local function ConvertItem(item)
     }
 
     -- type 2: weapons — routed through server.UseItem → Weapons:Client:Use, NOT ox native weapon system
-    -- type 9: ammo — routed through server.UseItem → lib.callback addAmmo, NOT ox native ammo system
+    -- type 9: ammo — routed through server.UseItem → Inventory:Client:AmmoLoad event, NOT ox native ammo system
     if item.type == 2 and item.ammoType then
         -- ammoname → individual bullet item so unloading gives single bullets, not whole boxes
         local bulletMap = {
