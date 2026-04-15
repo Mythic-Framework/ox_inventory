@@ -262,28 +262,41 @@ WEAPONS = {
     },
 }
 
--- ammo item use: check weapon equipped + ammo type match, add bullets
-lib.callback.register('ox_inventory:bridge:addAmmo', function(ammoData)
+-- ammo box use (type 9): server fires this, client shows progress bar then confirms back
+RegisterNetEvent('Inventory:Client:AmmoLoad', function(ammoData)
+    local N = exports['mythic-base']:FetchComponent('Notification')
     if not _equipped then
-        local N = exports['mythic-base']:FetchComponent('Notification')
         if N then N:Error('No Weapon Equipped') end
-        return false
+        return
     end
     local itemData = _weapItemDefs[_equipped.Name]
     if not itemData or itemData.ammoType ~= ammoData.ammoType then
-        local N = exports['mythic-base']:FetchComponent('Notification')
         if N then N:Error('Wrong Ammo Type') end
-        return false
+        return
+    end
+    -- capture before bar — disarm during progress would clear _equipped
+    local capturedEquipped = _equipped
+    local capturedAmmoType = itemData.ammoType
+    local Progress = exports['mythic-base']:FetchComponent('Progress')
+    if Progress then
+        local p = promise.new()
+        Progress:Progress({
+            duration  = 3000,
+            label     = 'Loading Ammo',
+            canCancel = true,
+            disarm    = false,
+        }, function(cancelled) p:resolve(not cancelled) end)
+        if not Citizen.Await(p) then return end
     end
     local ped = PlayerPedId()
-    local ammoHash = GetHashKey(itemData.ammoType or 'AMMO_PISTOL')
+    local ammoHash = GetHashKey(capturedAmmoType)
     local count = ammoData.bulletCount or 10
     SetPedAmmoByType(ped, ammoHash, GetPedAmmoByType(ped, ammoHash) + count)
     _ghostBullet = false
-    if _equipped.MetaData then
-        _equipped.MetaData.ammo = (_equipped.MetaData.ammo or 0) + count
+    if capturedEquipped.MetaData then
+        capturedEquipped.MetaData.ammo = (capturedEquipped.MetaData.ammo or 0) + count
     end
-    return true
+    TriggerServerEvent('Inventory:Server:AmmoLoaded', ammoData.itemName, ammoData.itemSlot, ammoData.itemMeta)
 end)
 
 _polyShopRestrictions = {
@@ -702,6 +715,17 @@ RegisterNetEvent('Inventory:Client:LoadBullets', function(data)
         if not input or not input[1] then return end
         local count = math.floor(tonumber(input[1]) or 0)
         if count < 1 then return end
+        local Progress = exports['mythic-base']:FetchComponent('Progress')
+        if Progress then
+            local p = promise.new()
+            Progress:Progress({
+                duration  = 3000,
+                label     = 'Loading Ammo',
+                canCancel = true,
+                disarm    = false,
+            }, function(cancelled) p:resolve(not cancelled) end)
+            if not Citizen.Await(p) then return end
+        end
         TriggerServerEvent('Inventory:Server:LoadBullets', weapon.slot, data.itemName, count)
     end
 
