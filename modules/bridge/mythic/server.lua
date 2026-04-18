@@ -375,6 +375,10 @@ local function injectDefaultMeta(itemName, meta, inventoryOwner)
         meta.Quality = math.random(100)
     end
     if iname == 'cigarette_pack' and not meta.Count then meta.Count = 30 end
+    if iname == 'crypto_voucher' then
+        if not meta.CryptoCoin then meta.CryptoCoin = 'PLEB' end
+        if not meta.Quantity   then meta.Quantity   = math.random(25, 50) end
+    end
     -- character-data items — resolve source from inventory owner (SID or numeric source)
     if (iname == 'govid' or iname == 'phone') and inventoryOwner then
         local src = type(inventoryOwner) == 'number' and inventoryOwner or toSource(inventoryOwner)
