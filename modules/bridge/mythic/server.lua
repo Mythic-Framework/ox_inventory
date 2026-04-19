@@ -1328,7 +1328,14 @@ RegisterNetEvent('ox_inventory:bridge:getShops', function()
     TriggerClientEvent('ox_inventory:bridge:receiveShops', source, buildShopPedData())
 end)
 
--- Register the bridge's patched Inventory as the mythic-base component so other shit works
+-- Dumbfuck:Open on the client calls Callbacks:ServerCallback("Inventory:Server:Open", {invType, owner})
 AddEventHandler('Proxy:Shared:RegisterReady', function()
+    local Callbacks = exports['mythic-base']:FetchComponent('Callbacks')
+    Callbacks:RegisterServerCallback('Inventory:Server:Open', function(source, data, cb)
+        if not data or not data.invType or not data.owner then cb(false) return end
+        Inventory.OpenSecondary(Inventory, source, data.invType, data.owner, data.class or false, data.model or false)
+        cb(true)
+    end)
+
     exports['mythic-base']:RegisterComponent('Inventory', Inventory)
 end)

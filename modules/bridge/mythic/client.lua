@@ -531,6 +531,15 @@ local ClientInventory = {
             exports['ox_inventory']:closeInventory()
         end,
     },
+    -- TODO rename functions when others updated otherwise errors
+    Dumbfuck = {
+        Open = function(self, data)
+            local Callbacks = exports['mythic-base']:FetchComponent('Callbacks')
+            Callbacks:ServerCallback('Inventory:Server:Open', data, function(state)
+                -- state is true on success; ox handles the actual UI open server-side
+            end)
+        end,
+    },
 
     StaticTooltip = {
         Open = function(self, item)
@@ -625,24 +634,15 @@ end)
 
 -- secondary inventory opens, this one was a pain in the ass to figure out
 RegisterNetEvent('Inventory:Client:Load', function(data)
-    -- trunk/glovebox (invtype 4/5) no longer handled here (no need to)
-    -- server calls forceOpenInventory directly
-    if data.invType == 13 or data.invType == 3 or data.invType == 44 or data.invType == 45 or data.invType >= 1000 then
-        -- stash: regular, police rack, evidence lockers, property safes etc
-        exports['ox_inventory']:openInventory('stash', {
-            id = data.owner,
-        })
-    elseif data.invType == 10 then
-        exports['ox_inventory']:openInventory('drop', {
-            id = data.owner,
-        })
+    -- trunk/glovebox (invtype 4/5) handled server-side via forceOpenInventory
+    if data.invType == 10 then
+        exports['ox_inventory']:openInventory('drop', { id = data.owner })
     elseif data.invType == 11 then
-        -- TODO: shops need ox-format definitions or this shows nothing useful
-        exports['ox_inventory']:openInventory('shop', {
-            type = data.owner,
-        })
+        exports['ox_inventory']:openInventory('shop', { type = data.owner })
+    else
+        -- everything else (13, 25, 44, 45, 81, etc.) is a registered stash
+        exports['ox_inventory']:openInventory('stash', { id = data.owner })
     end
-
 end)
 
 -- server said close it
