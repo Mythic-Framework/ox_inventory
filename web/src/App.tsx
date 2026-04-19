@@ -13,6 +13,8 @@ import { useDragDropManager } from 'react-dnd';
 import KeyPress from './components/utils/KeyPress';
 import { isEnvBrowser } from './utils/misc';
 import DevMenu from './components/dev/DevMenu';
+import StaticTooltip, { MythicItem } from './components/utils/StaticTooltip';
+import { useState } from 'react';
 
 debugData([
   {
@@ -77,6 +79,10 @@ debugData([
 const App: React.FC = () => {
   const dispatch = useAppDispatch();
   const manager = useDragDropManager();
+  const [staticTooltipItem, setStaticTooltipItem] = useState<MythicItem | null>(null);
+
+  useNuiEvent<{ item: MythicItem }>('OPEN_STATIC_TOOLTIP', ({ item }) => setStaticTooltipItem(item));
+  useNuiEvent('CLOSE_STATIC_TOOLTIP', () => setStaticTooltipItem(null));
 
   useNuiEvent<{
     locale: { [key: string]: string };
@@ -103,6 +109,7 @@ const App: React.FC = () => {
       <DragPreview />
       <KeyPress />
       {isEnvBrowser() && <DevMenu />}
+      {staticTooltipItem && <StaticTooltip item={staticTooltipItem} />}
     </div>
   );
 };
