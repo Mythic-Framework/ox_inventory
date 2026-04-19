@@ -531,6 +531,15 @@ local ClientInventory = {
             exports['ox_inventory']:closeInventory()
         end,
     },
+
+    StaticTooltip = {
+        Open = function(self, item)
+            SendNUIMessage({ action = 'OPEN_STATIC_TOOLTIP', data = { item = item } })
+        end,
+        Close = function(self)
+            SendNUIMessage({ action = 'CLOSE_STATIC_TOOLTIP', data = {} })
+        end,
+    },
 }
 
 -- register with mythic-base so every resource that calls FetchComponent('Inventory') gets our shim
