@@ -107,7 +107,7 @@ local function loadInventoryData(data, player, ignoreSecurityChecks)
 			data.type = 'glovebox'
 		elseif data.id:find('^trunk') then
 			data.type = 'trunk'
-		elseif data.id:find('^evidence-') then
+		elseif data.id:find('^evidence%-') then
 			data.type = 'policeevidence'
 		end
 	end

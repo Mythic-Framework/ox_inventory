@@ -1323,3 +1323,8 @@ end
 RegisterNetEvent('ox_inventory:bridge:getShops', function()
     TriggerClientEvent('ox_inventory:bridge:receiveShops', source, buildShopPedData())
 end)
+
+-- Register the bridge's patched Inventory as the mythic-base component so other shit works
+AddEventHandler('Proxy:Shared:RegisterReady', function()
+    exports['mythic-base']:RegisterComponent('Inventory', Inventory)
+end)
