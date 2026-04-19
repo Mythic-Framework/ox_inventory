@@ -594,6 +594,7 @@ AddEventHandler('Proxy:Shared:RegisterReady', function()
 end)
 
 -- force close when logging out, save weapon ammo
+RegisterNetEvent('Characters:Client:Logout')
 AddEventHandler('Characters:Client:Logout', function()
     exports['ox_inventory']:closeInventory()
     if _equipped then WEAPONS:UnequipIfEquippedNoAnim() end
@@ -601,6 +602,7 @@ AddEventHandler('Characters:Client:Logout', function()
 end)
 
 -- enable everything on spawn
+RegisterNetEvent('Characters:Client:Spawned')
 AddEventHandler('Characters:Client:Spawned', function()
     _weapLoggedIn = true
     LocalPlayer.state:set('invBusy', false, true)
