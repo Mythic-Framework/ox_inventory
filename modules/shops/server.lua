@@ -34,7 +34,8 @@ local function setupShopItems(id, shopType, shopName, groups)
 				metadata = slot.metadata,
 				license = slot.license,
 				currency = slot.currency,
-				grade = slot.grade
+				grade = slot.grade,
+				qualification = slot.qualification,
 			}
 
 			if slot.metadata then
@@ -245,6 +246,10 @@ lib.callback.register('ox_inventory:buyItem', function(source, data)
 
 			if fromData.license and server.hasLicense and not server.hasLicense(playerInv, fromData.license) then
 				return false, false, { type = 'error', description = locale('item_unlicensed') }
+			end
+
+			if fromData.qualification and server.hasLicense and not server.hasLicense(playerInv, fromData.qualification) then
+				return false, false, { type = 'error', description = 'You are not certified for this item.' }
 			end
 
 			if fromData.grade then
