@@ -532,7 +532,7 @@ local ClientInventory = {
         end,
     },
     -- TODO rename functions when others updated otherwise errors
-    Dumbfuck = {
+    Container = {
         Open = function(self, data)
             local Callbacks = exports['mythic-base']:FetchComponent('Callbacks')
             Callbacks:ServerCallback('Inventory:Server:Open', data, function(state)
