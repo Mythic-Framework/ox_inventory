@@ -837,7 +837,13 @@ end
 
 local mythicItemCache = {}
 
-AddEventHandler('ox_inventory:updateInventory', function()
+AddEventHandler('ox_inventory:updateInventory', function(changes)
+    if _equipped and changes and changes[_equipped.Slot] ~= nil then
+        local newSlotData = changes[_equipped.Slot]
+        if not newSlotData or not newSlotData.count then
+            WEAPONS:UnequipIfEquippedNoAnim()
+        end
+    end
     mythicItemCache = {}
     local idx = 0
     for slot, slotData in pairs (PlayerData.inventory or {}) do
