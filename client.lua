@@ -1899,7 +1899,15 @@ RegisterNUICallback('buyItem', function(data, cb)
 	end
 
 	if message then
-		Notification:Info(message)
+		if message.type == 'error' then
+			Notification:Error(message.description)
+		elseif message.type == 'success' then
+			Notification:Success(message.description)
+		elseif message.type == 'warning' then
+			Notification:Warn(message.description)
+		else
+			Notification:Info(message.description)	
+		end
 	end
 
 	cb(response)
