@@ -2,11 +2,16 @@ if not lib then return end
 
 require 'modules.bridge.client'
 require 'modules.interface.client'
-local Notification = exports['mythic-base']:FetchComponent('Notification')
 
 local Utils = require 'modules.utils.client'
 local Weapon = require 'modules.weapon.client'
 local currentWeapon
+local Notification
+
+while not Notification do
+    Notification = exports['mythic-base']:FetchComponent('Notification')
+    if not Notification then Wait(100) end
+end
 
 exports('getCurrentWeapon', function()
 	return currentWeapon
