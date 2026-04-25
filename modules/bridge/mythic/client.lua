@@ -551,15 +551,18 @@ local ClientInventory = {
     },
 }
 
--- register with mythic-base so every resource that calls FetchComponent('Inventory') gets our shim
+local _itemUseRegistered = false
+local _compartmentRegistered = false
+
 AddEventHandler('Proxy:Shared:RegisterReady', function()
     exports['mythic-base']:RegisterComponent('Inventory', ClientInventory)
 
     local Callbacks = exports['mythic-base']:FetchComponent('Callbacks')
-    local Progress = exports['mythic-base']:FetchComponent('Progress')
+    if not Callbacks then return end
 
-    if Callbacks and Progress then
+    if not _itemUseRegistered then
         Callbacks:RegisterClientCallback('Inventory:ItemUse', function(data, cb)
+            local Progress = exports['mythic-base']:FetchComponent('Progress')
             local Anims = exports['mythic-base']:FetchComponent('Animations')
 
             if data.anim and (not data.pbConfig or not data.pbConfig.animation) then
@@ -568,7 +571,7 @@ AddEventHandler('Proxy:Shared:RegisterReady', function()
                 end
             end
 
-            if data.pbConfig then
+            if data.pbConfig and Progress then
                 Progress:Progress({
                     name = data.pbConfig.name,
                     duration = data.time,
@@ -595,10 +598,15 @@ AddEventHandler('Proxy:Shared:RegisterReady', function()
                 cb(true)
             end
         end)
+        _itemUseRegistered = true
+    end
+
+    if not _compartmentRegistered then
         Callbacks:RegisterClientCallback('Inventory:Compartment:Open', function(data, cb)
             exports['ox_inventory']:closeInventory()
             cb(true)
         end)
+        _compartmentRegistered = true
     end
 end)
 
