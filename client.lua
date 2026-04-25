@@ -3,15 +3,25 @@ if not lib then return end
 require 'modules.bridge.client'
 require 'modules.interface.client'
 
+AddEventHandler("Inventory:Shared:DependencyUpdate", RetrieveComponents)
+function RetrieveComponents()
+	Notification = exports["mythic-base"]:FetchComponent("Notification")
+end
+
+AddEventHandler("Core:Shared:Ready", function()
+	exports["mythic-base"]:RequestDependencies("Inventory", {
+		"Notification",
+	}, function(error)
+		if #error > 0 then
+			return
+		end -- Do something to handle if not all dependencies loaded
+		RetrieveComponents()
+	end)
+end)
+
 local Utils = require 'modules.utils.client'
 local Weapon = require 'modules.weapon.client'
 local currentWeapon
-local Notification
-
-while not Notification do
-    Notification = exports['mythic-base']:FetchComponent('Notification')
-    if not Notification then Wait(100) end
-end
 
 exports('getCurrentWeapon', function()
 	return currentWeapon
@@ -1902,6 +1912,10 @@ RegisterNUICallback('buyItem', function(data, cb)
 			})
 		end
 	end
+
+	-- if message then
+	-- 	Notification:Info(message)
+	-- end
 
 	if message then
 		if message.type == 'error' then
