@@ -21,9 +21,10 @@ do
     end
 end
 
-local _equipped     = nil   -- { Name, Slot, Count, MetaData, Owner, invType }
-local _equippedData = nil   -- mythic item definition
-local _weapLoggedIn = false
+local _equipped              = nil   -- { Name, Slot, Count, MetaData, Owner, invType }
+local _equippedData          = nil
+local _weapLoggedIn          = false
+local _throwableConfirmedAmmo = nil  -- set by server after item removal; re-anchors detection
 
 local function _loadAnimDict(dict)
     while not HasAnimDictLoaded(dict) do RequestAnimDict(dict) Wait(5) end
@@ -162,6 +163,41 @@ local function _runWeaponThreads()
             Wait(20000)
         end
     end)
+    if not (_equippedData and _equippedData.isThrowable) then return end
+    _throwableConfirmedAmmo = nil
+    CreateThread(function()
+        local ammoHash = GetHashKey(_equippedData.ammoType or 'AMMO_GRENADE')
+        local prevAmmo = GetPedAmmoByType(PlayerPedId(), ammoHash)
+        local waiting  = false  -- blocked until server confirms removal + sends back count
+        while _equipped ~= nil and _weapLoggedIn do
+            -- server confirmed removal: re-anchor prevAmmo to real inventory count
+            if _throwableConfirmedAmmo then
+                prevAmmo = _throwableConfirmedAmmo
+                _throwableConfirmedAmmo = nil
+                waiting = false
+            end
+            if not waiting then
+                local currAmmo = GetPedAmmoByType(PlayerPedId(), ammoHash)
+                if currAmmo >= 0 and currAmmo < prevAmmo then
+                    waiting = true  -- gate all further detection until server responds
+                    prevAmmo = currAmmo
+                    local capturedItem = _equipped
+                    local capturedData = _equippedData
+                    local Inv = exports['mythic-base']:FetchComponent('Inventory')
+                    if Inv then Inv.Close:All() end
+                    TriggerServerEvent('ox_inventory:bridge:useThrowable', capturedItem.Name, capturedItem.Slot)
+                    local wname = string.upper(capturedData.name or '')
+                    if wname == 'WEAPON_SMOKEGRENADE' then
+                        TriggerEvent('Weapons:Client:SmokeGrenade')
+                    elseif wname == 'WEAPON_FLASHBANG' then
+                        TriggerEvent('Weapons:Client:Flashbang')
+                    end
+                end
+            end
+            Wait(50)
+        end
+        _throwableConfirmedAmmo = nil
+    end)
 end
 
 WEAPONS = {
@@ -297,6 +333,103 @@ RegisterNetEvent('Inventory:Client:AmmoLoad', function(ammoData)
         capturedEquipped.MetaData.ammo = (capturedEquipped.MetaData.ammo or 0) + count
     end
     TriggerServerEvent('Inventory:Server:AmmoLoaded', ammoData.itemName, ammoData.itemSlot, ammoData.itemMeta)
+end)
+
+-- server confirms throwable removed from inventory; re-anchors ammo tracking
+RegisterNetEvent('ox_inventory:bridge:throwableUsed', function(remaining)
+    if not _equipped or not _equippedData or not _equippedData.isThrowable then return end
+    local ped      = PlayerPedId()
+    local ammoHash = GetHashKey(_equippedData.ammoType or 'AMMO_GRENADE')
+    SetPedAmmoByType(ped, ammoHash, remaining)
+    _throwableConfirmedAmmo = remaining
+end)
+
+-- smoke grenade: poll projectile until it stops moving, then trigger server particle effect
+local _prevSmokeCoords = 0
+AddEventHandler('Weapons:Client:SmokeGrenade', function()
+    CreateThread(function()
+        local done = false
+        while not done do
+            local outCoords = vector3(0, 0, 0)
+            local _, coords = GetProjectileNearPed(PlayerPedId(), `WEAPON_SMOKEGRENADE`, 1000.0, outCoords, 0, 1)
+            if _prevSmokeCoords ~= 0 and #(coords - _prevSmokeCoords) < 0.5 then done = true end
+            _prevSmokeCoords = coords
+            Wait(1000)
+        end
+        TriggerServerEvent('Particles:Server:DoFx', _prevSmokeCoords, 'smoke')
+    end)
+end)
+
+local _flashTimersRunning = 0
+local _totalFlashShakeAmp = 0.0
+
+local function _disableFiringFor(duration)
+    local until_ = GetGameTimer() + duration
+    CreateThread(function()
+        while GetGameTimer() < until_ do
+            DisablePlayerFiring(PlayerId(), true)
+            Wait(1)
+        end
+    end)
+end
+
+local function _doFlashFx(shakeAmp, time)
+    _flashTimersRunning = _flashTimersRunning + 1
+    _totalFlashShakeAmp = _totalFlashShakeAmp + shakeAmp
+    local ped = PlayerPedId()
+    _loadAnimDict('anim@heists@ornate_bank@thermal_charge')
+    AnimpostfxPlay('Dont_tazeme_bro', 0, true)
+    TaskPlayAnim(ped, 'anim@heists@ornate_bank@thermal_charge', 'cover_eyes_intro', 8.0, 8.0, time, 50, 8.0)
+    _disableFiringFor(time * 0.75)
+    local Hud    = exports['mythic-base']:FetchComponent('Hud')
+    local Sounds = exports['mythic-base']:FetchComponent('Sounds')
+    if Hud and Hud.Flashbang then Hud.Flashbang:Do(time, _totalFlashShakeAmp) end
+    if Sounds then Sounds.Loop:One('flashbang.ogg', 0.1 * _totalFlashShakeAmp) end
+    Wait(time)
+    _flashTimersRunning = _flashTimersRunning - 1
+    _totalFlashShakeAmp = _totalFlashShakeAmp - shakeAmp
+    if _flashTimersRunning == 0 then
+        ClearPedTasks(ped)
+        AnimpostfxStop('Dont_tazeme_bro')
+        if Sounds then Sounds.Fade:One('flashbang.ogg') end
+    elseif Sounds then
+        Sounds.Loop:One('flashbang.ogg', 0.1 * _totalFlashShakeAmp)
+    end
+end
+
+AddEventHandler('Weapons:Client:Flashbang', function()
+    SetTimeout(1500, function()
+        local _, coords, prop = GetProjectileNearPed(PlayerPedId(), `WEAPON_FLASHBANG`, 1000.0, false)
+        if not coords then return end
+        AddExplosion(coords.x, coords.y, coords.z, 25, 0.0, true, true, true)
+        TriggerServerEvent('Weapons:Server:DoFlashFx', coords, NetworkGetNetworkIdFromEntity(prop) or prop)
+        ClearAreaOfProjectiles(coords.x, coords.y, coords.z, 10.0)
+    end)
+end)
+
+RegisterNetEvent('Weapons:Client:DoFlashFx', function(x, y, z, stunTime, afterTime, radius, netId, damage, lethalRange)
+    local ped = PlayerPedId()
+    if #(vector3(x, y, z) - GetEntityCoords(ped)) >= 100 then return end
+    _loadAnimDict('anim@heists@ornate_bank@thermal_charge')
+    local headPos = GetPedBoneCoords(ped, `SKEL_Head`, 0, 0, 0)
+    local pos     = vector3(x, y, z)
+    local dist    = #(GetEntityCoords(ped) - pos)
+    local fDist   = #(headPos - pos)
+    local dSq     = dist * dist
+    local falloutMulti          = 0.02 / (radius / 8.0)
+    local stunMulti             = falloutMulti * dSq
+    local effectFalloffStunTime = math.floor(stunTime * stunMulti + 0.5)
+    local actualStunTime        = math.max(1, (stunTime * effectFalloffStunTime) * 1000)
+    local handle = StartShapeTestLosProbe(x, y, z, headPos.x, headPos.y, headPos.z, 293, 0, 4)
+    local result, hit, endCoords, surfNorm, entityHit = 1, nil, nil, nil, nil
+    while result == 1 do
+        result, hit, endCoords, surfNorm, entityHit = GetShapeTestResult(handle)
+        Wait(1)
+    end
+    if fDist <= radius and result == 2 and entityHit == ped then
+        local pct = (radius - fDist) / radius
+        _doFlashFx(pct, stunTime * pct)
+    end
 end)
 
 _polyShopRestrictions = {

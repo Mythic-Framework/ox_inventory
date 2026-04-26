@@ -29,6 +29,7 @@ local function ConvertItem(item)
             armourValue   = item.armourValue or nil,
             dispenseItem  = item.dispenseItem or nil,
             drugState     = item.drugState or nil,
+            isThrowable   = item.isThrowable or false,
         },
         staticMetadata = item.staticMetadata or nil,
     }

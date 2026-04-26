@@ -318,7 +318,8 @@ local textPrompts = {
     }
 }
 
-Inventory.Evidence = setmetatable(lib.load('data.evidence'), {
+local _evidenceOk, _evidenceData = pcall(lib.load, 'data.evidence')
+Inventory.Evidence = setmetatable(_evidenceOk and _evidenceData or {}, {
     __call = function(self)
         for _, evidence in pairs(self) do
             if evidence.point then
@@ -357,7 +358,8 @@ Inventory.Evidence = setmetatable(lib.load('data.evidence'), {
     end
 })
 
-Inventory.Stashes = setmetatable(lib.load('data.stashes'), {
+local _stashesOk, _stashesData = pcall(lib.load, 'data.stashes')
+Inventory.Stashes = setmetatable(_stashesOk and _stashesData or {}, {
     __call = function(self)
         for id, stash in pairs(self) do
             if stash.jobs then stash.groups = stash.jobs end

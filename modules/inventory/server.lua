@@ -78,7 +78,8 @@ end
 local Vehicles = lib.load('data.vehicles')
 local RegisteredStashes = {}
 
-for _, stash in pairs(lib.load('data.stashes') or {}) do
+local _stashOk, _stashData = pcall(lib.load, 'data.stashes')
+for _, stash in pairs(_stashOk and _stashData or {}) do
 	RegisteredStashes[stash.name] = {
 		name = stash.name,
 		label = stash.label,

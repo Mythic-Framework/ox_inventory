@@ -43,7 +43,8 @@ local function createCraftingBench(id, data)
 	end
 end
 
-for id, data in pairs(lib.load('data.crafting') or {}) do createCraftingBench(data.name or id, data) end
+local _craftingOk, _craftingData = pcall(lib.load, 'data.crafting')
+for id, data in pairs(_craftingOk and _craftingData or {}) do createCraftingBench(data.name or id, data) end
 
 ---@param bench table
 ---@param index number

@@ -1094,6 +1094,7 @@ Inventory.GetItemsDatabase = function(self)
             price       = item.server and item.server.mythicPrice or 0,
             isStackable = item.stack,
             description = item.description or '',
+            isThrowable = item.server and item.server.isThrowable or false,
         }
     end
     return result
@@ -1106,6 +1107,11 @@ end
 Inventory.GetItemType = function(self, itemName)
     local item = Items(itemName)
     return item and item.server and item.server.mythicType or nil
+end
+
+Inventory.IsThrowable = function(self, itemName)
+    local item = Items(itemName)
+    return item and item.server and item.server.isThrowable or false
 end
 
 exports['mythic-base']:RegisterComponent('Inventory', Inventory)
@@ -1253,8 +1259,7 @@ end)
 
 -- load mythic items from within this execution chain
 -- (standalone server_scripts have their own require cache and write to a dead ItemList)
-local ok, err = pcall(require, 'modules.bridge.mythic.items')
-if not ok then print('^1[mythic-ox-bridge] items load error: ' .. tostring(err) .. '^0') end
+require('modules.bridge.mythic.items')
 
 -- rebuild groups when someones job changes
 AddEventHandler('Jobs:Server:JobUpdate', function(source)
@@ -1326,6 +1331,24 @@ end
 
 RegisterNetEvent('ox_inventory:bridge:getShops', function()
     TriggerClientEvent('ox_inventory:bridge:receiveShops', source, buildShopPedData())
+end)
+
+RegisterNetEvent('Weapons:Server:DoFlashFx', function(coords, netId)
+    TriggerClientEvent('Weapons:Client:DoFlashFx', -1, coords.x, coords.y, coords.z, 10000, 8, 20.0, netId, 25, 1.6)
+end)
+
+RegisterNetEvent('ox_inventory:bridge:useThrowable', function(itemName, slot)
+    local src = source
+    local inv = Inventory(src)
+    if not inv then return end
+    local ok = Inventory.RemoveItem(inv, itemName, 1, nil, slot)
+    if not ok then return end
+    local remaining = inv.items[slot]
+    if not remaining or not remaining.name then
+        TriggerClientEvent('Weapons:Client:ForceUnequip', src)
+    else
+        TriggerClientEvent('ox_inventory:bridge:throwableUsed', src, remaining.count or 0)
+    end
 end)
 
 -- Dumbfuck:Open on the client calls Callbacks:ServerCallback("Inventory:Server:Open", {invType, owner})
